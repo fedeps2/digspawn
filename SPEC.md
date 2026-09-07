@@ -34,7 +34,35 @@ Frontend vanilla JS + CSS (sin framework runtime pesado → fluidez).
 - Multi-idioma.
 - Instalador.
 
----
+## Escala del MVP (línea de corte)
+El MVP es lo que hace que "el amigo" pueda levantar y jugar en un server de
+Paper/Vanilla solo, sin perder nada. Facha y alcance extra van DESPUÉS.
+
+### ✅ MVP cerrado (HAY que tenerlo)
+- Biblioteca: cards de servers listadas desde disco; estado corriendo/parado.
+- "Nuevo server" → wizard 5 pasos: nombre · tipo (Vanilla/Paper) · versión
+  (filtrada al tipo) · Java (auto, label info) · RAM (slider default 2048).
+- Crear = bajar jar (Paper API / manifest Mojang) + firma eula + `server.properties`
+  default. Vuelve a library.
+- Start / Stop / Restart con botones.
+- Consola en vivo + input de comandos (stdin). Entrada por consola.
+- Comandos rápidos: say, op, give, time set, gamemode, whitelist add.
+- Java: autoinstall portable (Adoptium) si falta; arranque con JDK21 + Aikar's flags.
+- Update check (meta-file GitHub, patrón Phone Stories).
+- Propiedades básicas: puerto, online-mode, dificultad, gamemode, motd, max-players,
+  whitelist, RAM (editables con server parado; avisa que aplica en restart).
+- exe portable único a `%APPDATA%/mc-launcher/`.
+
+### ⏸️ FUERA del MVP (post-V1 "facha" / segunda pasada)
+- Pestañas Jugadores con parse fino del log (join/leave), RAM/CPU en vivo, tray icon.
+- Icono custom por server, carpetas de agrupación en la biblioteca, temas.
+- Override manual de Java (desplegable avanzado), ZGC, snapshots toggle.
+- Auto-update real (Opción B). Importar server existente. Editor de comandos custom.
+- Todo el árbol V2: modded (Fabric/Forge/NeoForge/Quilt), Spigot/Purpur/Folia,
+  híbridos (Mohist/Arclight/Magma), buscador Modrinth/CurseForge, backups.
+
+Regla de oro: **si no hace falta para que el amigo juegue con sus compañeros → está
+fuera del MVP.** La lista de post se ataca cuando el MVP esté en manos del pana.
 
 ## Arquitectura
 
@@ -64,8 +92,8 @@ Frontend vanilla JS + CSS (sin framework runtime pesado → fluidez).
         icon.png          (imagen custom de la card)
 ```
 
-- **dataDir Windows:** `%APPDATA%/mc-launcher/` (o el directorio del exe en modo
-  portable-with-files). Configurable.
+- **dataDir Windows:** `%APPDATA%/mc-launcher/` (fijo y único — DECIDIDO, ver
+  Bundling & Updates). Portable-with-files DESCARTADO (frágil ante updates).
 - Los servers viven en una carpeta aparte de la app → fácil backup/navegar.
 - Importar server existente V1: botón que apunta a una carpeta con jar → la
   copia/usa in-place.

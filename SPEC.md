@@ -219,11 +219,38 @@ Restos: valores vanilla default.
 
 ---
 
-## Bundling
-- `tauri build` → exe + (opcional) NSIS installer.
-- **Portable primero:** un solo .exe que usa `%APPDATA%` como dataDir (o
-  portable-with-files si el exe está en carpeta editable). Decisión de empaque
-  al final, pero portable = ejes simple.
+## Bundling & Updates
+- `tauri build` → exe portátil único. **DataDir fijo en `%APPDATA%/mc-launcher/`** —
+  DECIDIDO. Los servers/configs viven fuera del exe, por lo que actualizar el exe
+  NUNCA toca los datos. (No portable-with-files: frágil ante updates.)
+
+### Update check (MVP, Opción A — patrón "meta file" clonado de Phone Stories)
+- Un **repo GitHub "meta"** aloja un JSON plano en la raíz (`version`), el launcher
+  pega a su raw URL al arrancar y compara versión semver.
+- Schema (espeja el actual de PS):
+  ```json
+  {
+    "latest_public": "1.0.1",
+    "url": "https://github.com/USER/mc-launcher/releases/latest",
+    "notes": "BUGFIX: fix X\n+ nuevos comandos rápidos",
+    "required": false
+  }
+  ```
+- Flujo: al abrir la app, fetch del JSON (timeout corto, silent fail si no hay
+  red — no bloquear). Si `latest_public > local` → banner/badge "¡Nueva versión!"
+  con las notes + botón "Descargar" que abre la release en el navegador.
+- El user baja el exe nuevo y lo reemplaza → APPDATA intacto. No pierde nada.
+- **MUESTRA las notes** (changelog) — así el pana se entera qué chiches metiste
+  (tu razón exacta del sistema de PS).
+
+### Auto-update real (Opción B — post-lanzamiento, documentado)
+- `tauri-plugin-updater`: GitHub Release como CDN estático + JSON de manifiesto
+  generado por `tauri-action` en cada release. Sin host propio.
+- Requiere firma de artefactos con keypair (privada en GitHub Secrets) + GitHub
+  Action que buildee Windows (cross desde runner linux/mingw o windows-latest).
+  La parcialidad de la firma y CI/CD lo hace POST-lanzamiento, no MVP.
+- Funcionalmente igual para el pana que A; B es un salto de infraestructura, no
+  de UX.
 
 ---
 

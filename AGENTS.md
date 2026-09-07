@@ -36,9 +36,9 @@
 
 ## Definiciones pendientes (decidir CON Alex, código assumir quieto)
 - Nombre de la app / binario.
-- DataDir: fijar APPDATA vs portable-with-files junto al exe. (Default del
-  arranque: APPDATA, pero confirmar.)
 - Framework frontend confirmado: vanilla JS+CSS salvo contraorden.
+- (DataDir YA decidido: `%APPDATA%/mc-launcher/` fijo. Update check = meta-file de
+  GitHub tipo Phone Stories, Opción A. Ver SPEC.md → Bundling & Updates.)
 
 ## Cómo comprobar progreso (playbook del agente)
 - `cargo build` exitoso + `npm run tauri dev` levanta la UI → esqueleto ok.

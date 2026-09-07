@@ -57,10 +57,10 @@ export function errMsg(e: unknown): string {
 export const api = {
   listServers: () => invoke<ServerInfo[]>("list_servers"),
   listVersions: (server_type: ServerType, include_snapshots: boolean) =>
-    invoke<VersionItem[]>("list_versions", { server_type, include_snapshots }),
+    invoke<VersionItem[]>("list_versions", { serverType: server_type, includeSnapshots: include_snapshots }),
   createServer: (input: CreateInput) => invoke<ServerInfo>("create_server", { input }),
   deleteServer: (name: string) => invoke<void>("delete_server", { name }),
   detectJava: () => invoke<JavaInfo>("detect_java"),
   hostRamMb: () => invoke<number>("host_ram_mb"),
-  requiredJava: (mc_version: string) => invoke<number>("required_java", { mc_version }),
+  requiredJava: (mc_version: string) => invoke<number>("required_java", { mcVersion: mc_version }),
 };

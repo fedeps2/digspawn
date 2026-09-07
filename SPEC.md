@@ -140,12 +140,22 @@ pide confirmar eula el launcher lo muestra una vez.)
 - **Vanilla:** manifest Mojang `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`
   → sacar url del `server.jar`.
 
-### Detección de Java
-- Buscar `JAVA_HOME`, `java -version` en PATH, y en Windows
-  `Program Files/Java/*`, `Program Files/Eclipse Adoptium/*`.
-- Requisito MC moderno: **Java 21** (MC 1.20.5+). Si no hay → pantalla clara:
-  "Necesitás instalar Java 21" + botón que abre el link de Adoptium.
-- Guardar la ruta de java elegida por server (property interna).
+### Detección de Java + auto-instalación
+- **Estrategia V1: auto-instalar el JDK portable, sin tocar el sistema.**
+- Adoptium tiene API pública y expone un ZIP portable (cero instalador, cero
+  admin, cero PATH):
+  `https://api.adoptium.net/v3/binary/latest/21/ga/windows/x64/jdk/hotspot/normal/eclipse`
+  → descarga ZIP de Temurin JDK 21 → extraer dentro de `<dataDir>/runtime/jdk21/`
+  → usar ese `java.exe` local. Autónomo para el amigo.
+- Flujo: al primer arranque, `detect_java()`:
+  1. Si hay un `runtime/jdk21` propio → usarlo.
+  2. Sino, buscar `JAVA_HOME` / `java -version` en PATH / Program Files.
+  3. Si no hay ninguno → pantalla "Te falto Java, lo bajo yo" con progreso de
+     descarga → baja+extrae → listo. (Fallback: link a Adoptium por si la API falla.)
+- Tener en cuenta: un único runtime compartido por todos los servers.
+- Guardar "usar runtime propio sí/no" como setting global configurable.
+- **Nota:** JDK (no solo JRE) porque algunos servers/scripts piden javac; tamaño
+  extra es aceptable. Si quieren minimizar se baja JRE (`image_type=jre`).
 
 ### server.properties defaults (al crear)
 ```

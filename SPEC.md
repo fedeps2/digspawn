@@ -64,6 +64,33 @@ Paper/Vanilla solo, sin perder nada. Facha y alcance extra van DESPUÉS.
 - Todo el árbol V2: modded (Fabric/Forge/NeoForge/Quilt), Spigot/Purpur/Folia,
   híbridos (Mohist/Arclight/Magma), buscador Modrinth/CurseForge, backups.
 
+### V2: Custom titlebar & themes (anotado, NO se toca en MVP)
+**Custom titlebar** — Tauri lo soporta nativamente:
+- Quitar barra nativa: `tauri.conf.json` → `app.windows[].{ decorations: false }`.
+- Dibujar la propia barra en HTML/CSS (skin, tema, botones custom). Arrastre via
+  atributo `data-tauri-drag-region`.
+- Botones min/close/max: `getCurrentWindow().minimize() / toggleMaximize() / close()`.
+- Windows tiene además `titleBarStyle: "Overlay"`: deja las zonas nativas de
+  min/max/close (con snap layout/"reales") y solo se pinta el resto → lo más
+  robusto; recomendado sobre `decorations:false` crudo (que pierde snap).
+- Comprobable en Arch (Linux), pero el pulido fino (Overlay/snap) es Win-specific.
+
+**Themes** — soportar themes, tipo "chupar themes de VSCode":
+- Estructura con **CSS variables semánticas** (cada elemento pinta de una variable
+  de rol: background / surface / text / accent / border / ok / warn / error...).
+  Un theme = un mapa de esas variables → cambiar de theme = cambiar el mapa, no
+  tocar los componentes.
+- Cargar **themes de VSCode (.json, formato colorTheme)** del marketplace o de
+  la carpeta de VSCode del usuario, mapeando sus claves (~`editor.background`,
+  `foreground`, `statusBar.background`...) a nuestras variables semánticas.
+- Proxy/mapeo: los names de color de VSCode (cambian por extensión) → un mapper
+  por proyecto de theme; mantener una lista base de claves compatibles.
+- Complexity: MODERADO — la parte fácil es el sistema de variables + cargar un
+  theme propio. La parte con fricción es el **mapeo desde los ~100+ workspaces
+  keys de VSCode a roles propios** sin que quede feo. Hermes lo resuelve con un
+  skin YAML por mapa semántico + patch vivo de un key; Digspawn puede espejar ese
+  patrón: un CSS vars map por theme + recarga en vivo.
+
 Regla de oro: **si no hace falta para que el amigo juegue con sus compañeros → está
 fuera del MVP.** La lista de post se ataca cuando el MVP esté en manos del pana.
 

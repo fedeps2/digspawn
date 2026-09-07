@@ -157,6 +157,18 @@ pide confirmar eula el launcher lo muestra una vez.)
 - **Nota:** JDK (no solo JRE) porque algunos servers/scripts piden javac; tamaño
   extra es aceptable. Si quieren minimizar se baja JRE (`image_type=jre`).
 
+### Arranque del server — flags por default
+- **Todos los servers arrancan con JDK 21 + "Aikar's flags" (G1GC bonito) por
+  default** — el launcher las mete en el command de arranque solo, el amigo
+  nunca las ve. Esas flags las escribió el dev de Paper y son el tune estándar
+  para MC server:
+  `java -Xms{ram}M -Xmx{ram}M -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -jar server.jar --nogui`
+- **Para server chico (amigo, 4-6 jug): `-Xms/-Xmx 2G` es el tamaño carne.** ZGC
+  solo si se deseara un server grande (60+ jug / modding pesado) — feature
+  "modo avanzado", no default.
+- GraalVM NO — G1 es el único GC ahí y el net sobre Temurin es marginal para
+  MC. JDK 21 Temurin/Zulu + Aikar's flags es el estándar probado.
+
 ### server.properties defaults (al crear)
 ```
 online-mode=true, difficulty=normal, gamemode=survival, pvp=true,

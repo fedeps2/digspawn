@@ -1,22 +1,26 @@
-import { invoke } from "@tauri-apps/api/core";
+// Digspawn — biblioteca + wizard (hito 2).
 
-let greetInputEl: HTMLInputElement | null;
-let greetMsgEl: HTMLElement | null;
+import "./styles.css";
+import { renderLibrary } from "./library";
+import { openWizard } from "./wizard";
 
-async function greet() {
-  if (greetMsgEl && greetInputEl) {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsgEl.textContent = await invoke("greet", {
-      name: greetInputEl.value,
-    });
-  }
+const view = document.querySelector<HTMLElement>("#view");
+const wizardRoot = document.querySelector<HTMLElement>("#wizard-root");
+const newBtn = document.querySelector<HTMLButtonElement>("#new-server-btn");
+
+if (!view || !wizardRoot || !newBtn) {
+  throw new Error("Falta el shell base (index.html).");
 }
 
-window.addEventListener("DOMContentLoaded", () => {
-  greetInputEl = document.querySelector("#greet-input");
-  greetMsgEl = document.querySelector("#greet-msg");
-  document.querySelector("#greet-form")?.addEventListener("submit", (e) => {
-    e.preventDefault();
-    greet();
+async function showLibrary(): Promise<void> {
+  await renderLibrary(view as HTMLElement, () => {
+    openWizard(wizardRoot as HTMLElement, () => void showLibrary());
   });
+}
+
+newBtn.addEventListener("click", () => {
+  openWizard(wizardRoot as HTMLElement, () => void showLibrary());
 });
+
+window.addEventListener("DOMContentLoaded", () => void showLibrary());
+void showLibrary();

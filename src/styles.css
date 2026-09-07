@@ -237,6 +237,10 @@ input[type="range"] {
     color: #ffffff;
     background-color: #0f0f0f98;
   }
+  select option {
+    color: #f6f6f6;
+    background-color: #2f2f2f;
+  }
 
   a {
     color: #24c8db;

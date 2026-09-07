@@ -46,8 +46,8 @@ Paper/Vanilla solo, sin perder nada. Facha y alcance extra van DESPUÉS.
 - Biblioteca: cards de servers listadas desde disco; estado corriendo/parado.
 - "Nuevo server" → wizard 5 pasos: nombre · tipo (Vanilla/Paper) · versión
   (filtrada al tipo) · Java (auto, label info) · RAM (slider default 2048).
-- Crear = bajar jar (Paper API / manifest Mojang) + firma eula + `server.properties`
-  default. Vuelve a library.
+- Crear = bajar jar (Paper API / manifest Mojang) + firma eula `eula=true` con
+  consentimiento en wizard + `server.properties` default. Vuelve a library.
 - Start / Stop / Restart con botones.
 - Consola en vivo + input de comandos (stdin). Entrada por consola.
 - Comandos rápidos: say, op, give, time set, gamemode, whitelist add.
@@ -183,9 +183,10 @@ Mostrado como label info, NO editado. Override manual escondido en desplegable
 
 **Paso 5 — RAM (MB)**: slider, default 2048, guard rail por RAM física del host.
 
-→ Crea carpeta, baja el jar, firma `eula=true`, genera `server.properties`
-default, vuelve a la biblioteca con la card lista. (Primer arranque del server
-igual: si pide confirmar eula el launcher lo muestra una vez.)
+→ Crea carpeta, baja el jar, **firma `eula=true` SOLO tras el consentimiento del
+usuario** (paso del wizard: "Acepto la EULA de Minecraft" con link a
+https://aka.ms/MinecraftEULA; al tildarse firma `eula=true` en el txt), genera
+`server.properties` default, vuelve a la biblioteca con la card lista.
 Online-mode / puerto / dificultad / motd NO son wizard → van a Propiedades
 post-creación.
 

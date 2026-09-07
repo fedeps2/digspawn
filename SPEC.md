@@ -234,9 +234,11 @@ post-creación.
 | `read_log(name)` | Últimas N líneas al abrir consola (history). |
 
 ### API de descarga
-- **Paper:** `https://api.papermc.io/v2/projects/paper` → versions/builds.
-  (Nota: Paper migró a API v3 — `https://api.papermc.io/v3` — VERIFICAR cuál
-  usar al implementar; v2 sigue activa pero deprecándose.)
+- **Paper:** API **Fill v3** — `https://fill.papermc.io/v3/projects/${PROJECT}/versions/${VERSION}/builds`
+  (API v2 SUNSET: dejó de publicar builds el 31-dic-2025; NO usarla). Luego
+  `.../versions` lista versiones. **Las URLs del jar vienen EMBEBIDAS en la
+  respuesta** (apuntan a `fill-data.papermc.io`) — NO construirlas a mano, el
+  formato cambia. Selector de channel STABLE.
 - **Vanilla:** manifest Mojang `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json`
   → sacar url del `server.jar`.
 

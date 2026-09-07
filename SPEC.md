@@ -1,4 +1,7 @@
-# MC Server Launcher — Spec V1
+# Digspawn — MC Server Launcher — Spec V1
+
+**Nombre definitivo: Digspawn.** Dig (minar) + spawn (crear/prender servers). Juego
+de palabras con el nickname *Digian*. Binario: `digspawn` / `Digspawn.exe`.
 
 ## Qué es
 Launcher de escritorio tipo Prism Launcher, pero para HOSTEAR servers de Minecraft.
@@ -51,7 +54,7 @@ Paper/Vanilla solo, sin perder nada. Facha y alcance extra van DESPUÉS.
 - Update check (meta-file GitHub, patrón Phone Stories).
 - Propiedades básicas: puerto, online-mode, dificultad, gamemode, motd, max-players,
   whitelist, RAM (editables con server parado; avisa que aplica en restart).
-- exe portable único a `%APPDATA%/mc-launcher/`.
+- exe portable único a `%APPDATA%/digspawn/`.
 
 ### ⏸️ FUERA del MVP (post-V1 "facha" / segunda pasada)
 - Pestañas Jugadores con parse fino del log (join/leave), RAM/CPU en vivo, tray icon.
@@ -92,7 +95,7 @@ fuera del MVP.** La lista de post se ataca cuando el MVP esté en manos del pana
         icon.png          (imagen custom de la card)
 ```
 
-- **dataDir Windows:** `%APPDATA%/mc-launcher/` (fijo y único — DECIDIDO, ver
+- **dataDir Windows:** `%APPDATA%/digspawn/` (fijo y único — DECIDIDO, ver
   Bundling & Updates). Portable-with-files DESCARTADO (frágil ante updates).
 - Los servers viven en una carpeta aparte de la app → fácil backup/navegar.
 - Importar server existente V1: botón que apunta a una carpeta con jar → la
@@ -248,7 +251,7 @@ Restos: valores vanilla default.
 ---
 
 ## Bundling & Updates
-- `tauri build` → exe portátil único. **DataDir fijo en `%APPDATA%/mc-launcher/`** —
+- `tauri build` → exe portátil único. **DataDir fijo en `%APPDATA%/digspawn/`** —
   DECIDIDO. Los servers/configs viven fuera del exe, por lo que actualizar el exe
   NUNCA toca los datos. (No portable-with-files: frágil ante updates.)
 
@@ -293,7 +296,6 @@ Restos: valores vanilla default.
   buen manejo del estado `crashed` con el motivo.
 
 ## Definir al arrancar la V1
-- ¿Framework frontend? Sugerencia: vanilla JS + CSS (cero runtime, fluido).
-  Si el wizard/estado se vuelve complejo, Svelte compilado es el upgrade natural.
-- Nombre de la app / repo.
-- DataDir fijo (APPDATA) vs. portable-with-files junto al exe.
+- Framework frontend: sugerencia vanilla JS + CSS (cero runtime, fluido). Si el
+  wizard/estado se vuelve complejo, Svelte compilado es el upgrade natural.
+  (Nombre = **Digspawn**, dataDir = `%APPDATA%/digspawn/` — ya decididos.)

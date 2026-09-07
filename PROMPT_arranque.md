@@ -34,7 +34,7 @@ Montar el esqueleto Tauri v2 MINIMO y que corra en mi Arch (el dev machine).
 - No subas a GitHub aun. Repo local.
 
 ## DEFINIDO YA (no lo reabras)
-DataDir=%APPDATA%/mc-launcher/, update-check=meta-file GitHub tipo Phone Stories,
+DataDir=%APPDATA%/digspawn/, update-check=meta-file GitHub tipo Phone Stories,
 Java=autoinstall Adoptium portable + JDK21 + Aikar's flags. Todo en el spec.
 
 ## PLAYBOOK PARA CONFIRMAR QUE QUEDO BIEN

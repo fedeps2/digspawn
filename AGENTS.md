@@ -35,10 +35,9 @@
   (requiere toolchain + webview2 en la máquina build; JUEGO POSTERIOR, no del arranque).
 
 ## Definiciones pendientes (decidir CON Alex, código assumir quieto)
-- Nombre de la app / binario.
 - Framework frontend confirmado: vanilla JS+CSS salvo contraorden.
-- (DataDir YA decidido: `%APPDATA%/mc-launcher/` fijo. Update check = meta-file de
-  GitHub tipo Phone Stories, Opción A. Ver SPEC.md → Bundling & Updates.)
+- (Nombre Y DECIDIDO: **Digspawn** — binario `digspawn`. DataDir `%APPDATA%/digspawn/`
+  fijo. Update-check = meta-file GitHub tipo Phone Stories. Ver SPEC.md.)
 
 ## Cómo comprobar progreso (playbook del agente)
 - `cargo build` exitoso + `npm run tauri dev` levanta la UI → esqueleto ok.

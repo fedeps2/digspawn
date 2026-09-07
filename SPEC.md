@@ -9,7 +9,8 @@ Apuntado a que "el más burro" pueda levantar un server de Paper/Vanilla sin toc
 un archivo de texto ni una terminal NUNCA. Windows, portable.
 
 **Stack:** Tauri v2 — Rust backend + UI web (webview nativo, exe ~15MB).
-Frontend vanilla JS + CSS (sin framework runtime pesado → fluidez).
+Frontend vanilla TypeScript + CSS (compila a JS vanilla; sin framework runtime
+pesado → fluidez). DECIDIDO.
 
 ---
 
@@ -323,6 +324,8 @@ Restos: valores vanilla default.
   buen manejo del estado `crashed` con el motivo.
 
 ## Definir al arrancar la V1
-- Framework frontend: sugerencia vanilla JS + CSS (cero runtime, fluido). Si el
-  wizard/estado se vuelve complejo, Svelte compilado es el upgrade natural.
+- Framework frontend: **vanilla TypeScript + CSS** DECIDIDO (compila a JS vanilla,
+  cero runtime, fluido; el tipado leve caza errores de contratos). Si el
+  wizard/estado se vuelve complejo, Svelte compilado es el upgrade natural, pero
+  requiere aviso previo antes de usarse.
   (Nombre = **Digspawn**, dataDir = `%APPDATA%/digspawn/` — ya decididos.)

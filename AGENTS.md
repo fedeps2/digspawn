@@ -9,9 +9,13 @@
   pero NO se commitea código roto ni WIP sin avisar.
 
 ## Stack
-- Tauri v2 (Rust backend + webview nativo). Frontend: vanilla JS + CSS (sin
-  framework runtime pesado; Svelte solo si el estado se vuelve complejo).
+- Tauri v2 (Rust backend + webview nativo). Frontend: **vanilla TypeScript + CSS**
+  DECIDIDO (compila a JS vanilla, mismo runtime; tipado leve caza errores de
+  contratos en compile-time). Sin framework runtime pesado (React/Vue/Svelte NO
+  salvo complejidad justificada y aviso previo).
 - Alcanza con lo que trae `npm create tauri-app` — no inventar tooling extra.
+- Scaffold: vanilla TS, productName `Digspawn`, identifier `com.digspawn.app`,
+  binario `digspawn`.
 
 ## Reglas de trabajo
 1. Leer SPEC.md completo antes de tocar código.

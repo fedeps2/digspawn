@@ -24,8 +24,10 @@ Montar el esqueleto Tauri v2 MINIMO y que corra en mi Arch (el dev machine).
 ## RESTRICCIONES / LIMITES
 - SOLO el esqueleto. NO implementes cargar servers, bajar jars, consola, ni nada del
   feature-set del MVP todavia. Ese es el siguiente hito. No te adelantes.
-- Frontend: vanilla JS+CSS, salvo que el estado se vuelva complejo (ahi evalua Svelte
-  compilado, pero avisa antes de cambiar).
+- Frontend: **vanilla TypeScript + CSS** (compila a JS vanilla, cero runtime).
+  No uses framework runtime (React/Vue/Svelte) salvo complejidad justificada y
+  aviso previo. Scaffold: vanilla TS, productName `Digspawn`, identifier
+  `com.digspawn.app`, binario `digspawn`.
 - Compilación target principal: que corra en Arch. El exe Windows final se resuelve
   DESPUES. No lo persigas ahora.
 - Tiramselo portable-with-files NO — dataDir fijo en APPDATA.

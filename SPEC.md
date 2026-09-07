@@ -12,16 +12,24 @@ Frontend vanilla JS + CSS (sin framework runtime pesado → fluidez).
 
 ## Alcance V1
 - Biblioteca de servers (cards estilo Prism).
-- Crear server: Paper o Vanilla, elegís versión.
+- Crear server: **solo Vanilla (Mojang) o Paper** — familias de server. (El resto
+  del árbol de tipos: Spigot/Purpur/Folia, modded Fabric/Forge/NeoForge/Quilt, e
+  híbridos Mohist/Arclight/Magma → V2. El wizard se diseña EXTENSIBLE: el tipo es
+  un enum, sumar un tipo es agregar una entrada, no reescribir el flujo.)
 - Configurar server desde menú (specs, mundo, dificultad, whitelist, etc).
 - Prender/apagar/restart con botones.
 - Consola en vivo + pestañas (Jugadores / Comandos útiles / Ajustes).
 - Comandos rápidos: say, op, give, time set, gamemode, whitelist add.
-- Portable exe. Detección de Java.
+- Portable exe. **Auto-instalación de Java portable (Adoptium) + arranque con
+  JDK21 + Aikar's flags por default.**
+- **Wizard de Java: auto-derivado de la versión de MC** (override oculto).
 
 ## FUERA de V1 (anotado para V2)
 - Buscador de mods (Modrinth + CurseForge) + instalación.
-- Soporte Fabric/Forge.
+- Soporte Fabric/Forge/NeoForge/Quilt (modded).
+- Tipos plugin extra: Spigot / Purpur / Folia.
+- Híbridos mods+plugins: Mohist / Arclight / Magma / CatServer (versiones viejas,
+  "modo avanzado").
 - Backup / exportar / importar worlds.
 - Multi-idioma.
 - Instalador.
@@ -88,13 +96,46 @@ Frontend vanilla JS + CSS (sin framework runtime pesado → fluidez).
 - **"Nuevo server"** → wizard.
 
 ### 2. Wizard "Nuevo server"
-1. Tipo: Paper (recomendado) | Vanilla.
-2. Versión: dropdown desde API de Paper/Mojang (última por default).
-3. Nombre.
-4. RAM (MB) con default sensato (2048).
-→ Crea carpeta, baja el jar, firma `eula=true`, genera `server.properties` default,
-vuelve a la biblioteca con la card lista. (Primer arranque del server igual, si
-pide confirmar eula el launcher lo muestra una vez.)
+Flujo progresivo. El camino feliz es corto (5 pasos); el resto es "avanzado"
+plegable. **Orden crítico: tipo → versión → Java** (están acoplados: cada tipo y
+versión mapea a su Java correcto, no se pueden preguntar en orden libre).
+
+**Paso 1 — Identidad:** Nombre (+ carpeta de agrupación opcional, para ordenar
+varios servers tipo Prism). Icono NO se pide en creación (fricción) → default, se
+cambia en propiedades.
+
+**Paso 2 — Família / tipo de server** (V1: Vanilla o Paper, estilo card con
+explicación corta de cada uno):
+- **Vanilla** (jar oficial de Mojang, ni plugins ni mods).
+- **Paper** (recomendado — server tipo-Bukkit, corre plugins, mejor performance).
+- *(V2: plugins extra, modded, híbridos — enum extensible.)*
+
+**Paso 3 — Versión** filtrada al tipo elegido (sin snapshots en Paper, solo
+releases y su rango soportado). Toggle "incluir snapshots/releases" off por
+default (aplica solo a Vanilla).
+
+**Paso 4 — Java (automático):** auto-derivado de la versión de MC elegida.
+Mostrado como label info, NO editado. Override manual escondido en desplegable
+"avanzado". Reglas:
+- MC <1.17 → Java 8
+- MC 1.17 → 16
+- MC 1.18–1.20.4 → 17
+- MC 1.20.5+ → 21
+
+**Paso 5 — RAM (MB)**: slider, default 2048, guard rail por RAM física del host.
+
+→ Crea carpeta, baja el jar, firma `eula=true`, genera `server.properties`
+default, vuelve a la biblioteca con la card lista. (Primer arranque del server
+igual: si pide confirmar eula el launcher lo muestra una vez.)
+Online-mode / puerto / dificultad / motd NO son wizard → van a Propiedades
+post-creación.
+
+#### Decisiones tomadas (V1)
+- Solo Vanilla + Paper en el wizard. Modded/híbridos/plugins-extra a V2.
+- Java auto-derivado de la versión de MC; override oculto disponible.
+- Icono no se pide al crear; se edita en propiedades.
+- Los 3 grupos (Vanilla/Plugin/Modded) van al wizard SOLO en V2 (con naming
+  claro plugins-vs-mods y híbridos escondidos en "modo avanzado").
 
 ### 3. Modo servidor (ventana transformada)
 - Header: nombre + estado + RAM/CPU en vivo + botones Start/Stop/Restart.

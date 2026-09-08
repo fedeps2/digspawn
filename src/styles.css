@@ -763,7 +763,6 @@ input[type="range"] {
   grid-template-columns: 1fr 264px;
   gap: 1rem;
   align-items: start;
-  min-height: calc(100dvh - 64px);
   margin-top: -1.5rem;
   margin-right: -1.25rem;
 }

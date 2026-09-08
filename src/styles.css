@@ -800,6 +800,13 @@ input[type="range"] {
   opacity: 0.45;
 }
 
+.sidebar > button,
+.sb-foot button {
+  padding: 0.75em 1em;
+  font-size: 1rem;
+  min-height: 2.9rem;
+}
+
 .danger-zone {
   margin-top: 0.5rem;
   padding-top: 0.5rem;

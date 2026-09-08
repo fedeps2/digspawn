@@ -3,9 +3,9 @@
 import "./styles.css";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { api } from "./api";
-import { renderLibrary } from "./library";
+import { renderLibrary, unmountLibrary } from "./library";
 import { openWizard } from "./wizard";
-import { openServer } from "./server";
+import { openServer, type ServerTab } from "./server";
 import { openImport } from "./import";
 import { openSettings } from "./settings";
 
@@ -24,11 +24,10 @@ async function showLibrary(): Promise<void> {
   const v = view as HTMLElement;
   await renderLibrary(v, {
     onNew: () => openWizard(wizardRoot as HTMLElement, () => void showLibrary()),
-    onOpen: (name) => void openServer(v, name, () => void showLibrary()),
-    onQuickStart: (name) => {
-      void api.startServer(name).catch(() => undefined).finally(() => {
-        void openServer(v, name, () => void showLibrary());
-      });
+    onImport: () => openImport(wizardRoot as HTMLElement, () => void showLibrary()),
+    onOpen: (name, tab: ServerTab) => {
+      unmountLibrary();
+      void openServer(v, name, () => void showLibrary(), tab);
     },
   });
 }
@@ -42,6 +41,7 @@ importBtn.addEventListener("click", () => {
 });
 
 settingsBtn.addEventListener("click", () => {
+  unmountLibrary();
   void openSettings(view as HTMLElement, () => void showLibrary());
 });
 

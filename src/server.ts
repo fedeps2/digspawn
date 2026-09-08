@@ -31,7 +31,9 @@ const DIFFICULTIES = ["peaceful", "easy", "normal", "hard"];
 const GAMEMODES = ["survival", "creative", "adventure", "spectator"];
 const BOOLS = ["true", "false"];
 
-export async function openServer(view: HTMLElement, name: string, onBack: () => void): Promise<void> {
+export type ServerTab = "consola" | "ajustes" | "historial" | "comandos" | "jugadores" | "plugins";
+
+export async function openServer(view: HTMLElement, name: string, onBack: () => void, initialTab: ServerTab = "consola"): Promise<void> {
   const servers = await api.listServers().catch(() => [] as ServerInfo[]);
   const info = servers.find((s) => s.name === name);
   if (!info) {
@@ -43,7 +45,8 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   let state: string = info.state;
   let ramMb: number = info.ram_mb;
   let busy = false;
-  let tab: "consola" | "ajustes" | "historial" | "comandos" | "jugadores" | "plugins" = "consola";
+  if (initialTab === "plugins" && info.type !== "paper") initialTab = "ajustes";
+  let tab: ServerTab = initialTab;
   let props: Record<string, string> | null = null;
   let propsError: string | null = null;
   let propsMsg: string | null = null;

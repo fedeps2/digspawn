@@ -49,6 +49,7 @@ const AIKAR_FLAGS: &[&str] = &[
 struct Running {
     child: Arc<tokio::sync::Mutex<Child>>,
     stdin: Arc<tokio::sync::Mutex<ChildStdin>>,
+    pid: u32,
 }
 
 /// Estado global (uno por app): qué servers están corriendo.
@@ -193,6 +194,7 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
     let java = crate::runtime::ensure_runtime(app, required, &on_progress).await?;
 
     let mut child = spawn_process(&java, &dir, meta.ram_mb).await?;
+    let pid = child.id();
     let stdout = child.stdout.take().expect("stdout piped");
     let stderr = child.stderr.take().expect("stderr piped");
     let stdin = child.stdin.take().expect("stdin piped");
@@ -206,6 +208,7 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
             Running {
                 child: Arc::new(tokio::sync::Mutex::new(child)),
                 stdin: Arc::new(tokio::sync::Mutex::new(stdin)),
+                pid: pid.unwrap_or(0),
             },
         );
     }
@@ -367,6 +370,170 @@ pub fn state_of(app: &AppHandle, name: &str) -> String {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Propiedades (solo con el server parado; aplican al arrancar).
+// ---------------------------------------------------------------------------
+
+fn require_stopped(app: &AppHandle, name: &str) -> Result<()> {
+    let procs: tauri::State<'_, ProcessState> = app.state::<ProcessState>();
+    if procs.is_running(name) {
+        return Err(ServerError::AlreadyRunning(
+            "Frená el server para editar (aplica al arrancar).".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub fn get_properties(app: &AppHandle, name: &str) -> Result<std::collections::HashMap<String, String>> {
+    let clean = server_manager::validate_name(name)?;
+    crate::properties::read_map(&server_path(app, &clean)?.join("server.properties"))
+}
+
+pub fn set_properties(
+    app: &AppHandle,
+    name: &str,
+    kvs: std::collections::HashMap<String, String>,
+) -> Result<()> {
+    let clean = server_manager::validate_name(name)?;
+    require_stopped(app, &clean)?;
+    crate::properties::apply_changes(&server_path(app, &clean)?.join("server.properties"), &kvs)
+}
+
+/// RAM asignada (vive en el sidecar, no en server.properties).
+pub fn set_ram(app: &AppHandle, name: &str, ram_mb: u64) -> Result<()> {
+    let clean = server_manager::validate_name(name)?;
+    require_stopped(app, &clean)?;
+    let host = server_manager::host_ram_mb()?;
+    if ram_mb < 512 || ram_mb > host {
+        return Err(ServerError::InvalidName(format!(
+            "RAM entre 512 MB y {host} MB (tu equipo)."
+        )));
+    }
+    let dir = server_path(app, &clean)?;
+    let mut meta = read_meta(&dir)?;
+    meta.ram_mb = ram_mb;
+    std::fs::write(dir.join(SIDECAR), serde_json::to_string_pretty(&meta)?)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Monitoreo + preflight.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct HostStats {
+    pub total_mb: u64,
+    pub used_mb: u64,
+    pub cpu_pct: f32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ServerStat {
+    pub name: String,
+    pub pid: u32,
+    pub ram_mb: u64,
+    pub cpu_pct: f32,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AllStats {
+    pub host: HostStats,
+    pub servers: Vec<ServerStat>,
+}
+
+fn host_stats(sys: &sysinfo::System) -> HostStats {
+    let cpus = sys.cpus();
+    let cpu_pct = if cpus.is_empty() {
+        0.0
+    } else {
+        cpus.iter().map(|c| c.cpu_usage()).sum::<f32>() / cpus.len() as f32
+    };
+    HostStats {
+        total_mb: sys.total_memory() / 1024 / 1024,
+        used_mb: sys.used_memory() / 1024 / 1024,
+        cpu_pct,
+    }
+}
+
+/// Foto de host + cada server corriendo (por PID).
+pub fn server_stats(app: &AppHandle) -> Result<AllStats> {
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_all();
+    let host = host_stats(&sys);
+    let procs: tauri::State<'_, ProcessState> = app.state::<ProcessState>();
+    let snapshot: Vec<(String, u32)> = {
+        let running = procs.running.lock().expect("lock");
+        running.iter().map(|(n, r)| (n.clone(), r.pid)).collect()
+    };
+    let mut servers = vec![];
+    for (name, pid) in snapshot {
+        let (ram_mb, cpu_pct) = sys
+            .process(sysinfo::Pid::from_u32(pid))
+            .map(|p| (p.memory() / 1024 / 1024, p.cpu_usage()))
+            .unwrap_or((0, 0.0));
+        servers.push(ServerStat { name, pid, ram_mb, cpu_pct });
+    }
+    servers.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    Ok(AllStats { host, servers })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Preflight {
+    pub can_start: bool,
+    pub free_mb: u64,
+    pub needed_mb: u64,
+    pub warnings: Vec<String>,
+}
+
+/// Lógica pura del preflight (testeable con números inyectados).
+pub fn evaluate_preflight(
+    total_mb: u64,
+    used_mb: u64,
+    assigned_running_mb: u64,
+    needed_mb: u64,
+) -> Preflight {
+    let free_mb = total_mb.saturating_sub(used_mb).saturating_sub(assigned_running_mb);
+    let mut warnings = vec![];
+    if needed_mb > free_mb {
+        let falta = needed_mb - free_mb;
+        warnings.push(format!(
+            "Este server pide {needed_mb} MB pero quedan ~{free_mb} MB libres (faltan ~{falta} MB). \
+            Si lo arrancás igual puede andar a los tirones o crashear. \
+            Conviene frenar otro server o bajarle la RAM en Ajustes."
+        ));
+    }
+    Preflight { can_start: true, free_mb, needed_mb, warnings }
+}
+
+/// Chequeo antes de arrancar: ¿alcanza la memoria?
+/// No bloquea (el aviso con confirmación vive en la UI); solo informa.
+pub fn preflight(app: &AppHandle, name: &str) -> Result<Preflight> {
+    let clean = server_manager::validate_name(name)?;
+    let dir = server_path(app, &clean)?;
+    let meta = read_meta(&dir)?;
+    let mut sys = sysinfo::System::new_all();
+    sys.refresh_memory();
+    let total_mb = sys.total_memory() / 1024 / 1024;
+    let used_mb = sys.used_memory() / 1024 / 1024;
+    // RAM ya comprometida por otros servers corriendo (por sidecar).
+    let procs: tauri::State<'_, ProcessState> = app.state::<ProcessState>();
+    let others: Vec<String> = {
+        let running = procs.running.lock().expect("lock");
+        running.keys().filter(|n| *n != &clean).cloned().collect()
+    };
+    let mut assigned_running_mb: u64 = 0;
+    let base = server_manager::servers_dir(app)?;
+    for other in others {
+        let raw = std::fs::read_to_string(base.join(&other).join(SIDECAR));
+        if let Ok(raw) = raw {
+            if let Ok(m) = serde_json::from_str::<ServerMeta>(&raw) {
+                assigned_running_mb += m.ram_mb;
+            }
+        }
+    }
+    Ok(evaluate_preflight(total_mb, used_mb, assigned_running_mb, meta.ram_mb))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,6 +552,45 @@ mod tests {
     fn launch_args_min_ram() {
         let a = launch_args(512);
         assert_eq!(a[0], "-Xms512M");
+    }
+
+    #[test]
+    fn preflight_ok_when_memory_fits() {
+        let p = evaluate_preflight(16000, 6000, 2048, 2048);
+        assert!(p.can_start);
+        assert!(p.warnings.is_empty());
+        assert_eq!(p.free_mb, 16000 - 6000 - 2048);
+        assert_eq!(p.needed_mb, 2048);
+    }
+
+    #[test]
+    fn preflight_warns_when_short() {
+        let p = evaluate_preflight(8000, 7000, 0, 2048);
+        assert!(p.can_start); // informa, no bloquea
+        assert_eq!(p.warnings.len(), 1);
+        assert!(p.warnings[0].contains("faltan"));
+    }
+
+    #[test]
+    fn preflight_counts_running_servers() {
+        // Otro server corriendo con 4GB asignados deja sin lugar al nuevo.
+        let p = evaluate_preflight(8000, 2000, 4096, 2048);
+        assert_eq!(p.warnings.len(), 1);
+    }
+
+    #[test]
+    fn sysinfo_reads_host_and_self() {
+        let mut sys = sysinfo::System::new_all();
+        sys.refresh_all();
+        let host = host_stats(&sys);
+        assert!(host.total_mb >= 512, "total: {}", host.total_mb);
+        assert!(host.used_mb <= host.total_mb);
+        assert!((0.0..=100.0).contains(&host.cpu_pct), "cpu: {}", host.cpu_pct);
+        // El propio proceso de test debe aparecer por PID.
+        let me = sys
+            .process(sysinfo::Pid::from_u32(std::process::id()))
+            .expect("el proceso propio debe existir");
+        assert!(me.memory() > 0);
     }
 
     /// Boot real hasta "Done" + `say` + freno graceful con `stop`.

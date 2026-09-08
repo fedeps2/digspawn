@@ -120,6 +120,35 @@ fn read_log(app: AppHandle, name: String, max_lines: u32) -> Result<Vec<String>>
     processes::read_log(&app, &name, max_lines)
 }
 
+#[tauri::command]
+fn get_properties(app: AppHandle, name: String) -> Result<std::collections::HashMap<String, String>> {
+    processes::get_properties(&app, &name)
+}
+
+#[tauri::command]
+fn set_properties(
+    app: AppHandle,
+    name: String,
+    kvs: std::collections::HashMap<String, String>,
+) -> Result<()> {
+    processes::set_properties(&app, &name, kvs)
+}
+
+#[tauri::command]
+fn set_ram(app: AppHandle, name: String, ram_mb: u64) -> Result<()> {
+    processes::set_ram(&app, &name, ram_mb)
+}
+
+#[tauri::command]
+fn server_stats(app: AppHandle) -> Result<processes::AllStats> {
+    processes::server_stats(&app)
+}
+
+#[tauri::command]
+fn preflight(app: AppHandle, name: String) -> Result<processes::Preflight> {
+    processes::preflight(&app, &name)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -138,6 +167,11 @@ pub fn run() {
             restart_server,
             send_command,
             read_log,
+            get_properties,
+            set_properties,
+            set_ram,
+            server_stats,
+            preflight,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

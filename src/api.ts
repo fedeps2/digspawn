@@ -63,6 +63,31 @@ export interface RuntimeProgress {
   pct: number | null;
 }
 
+export interface HostStats {
+  total_mb: number;
+  used_mb: number;
+  cpu_pct: number;
+}
+
+export interface ServerStat {
+  name: string;
+  pid: number;
+  ram_mb: number;
+  cpu_pct: number;
+}
+
+export interface AllStats {
+  host: HostStats;
+  servers: ServerStat[];
+}
+
+export interface Preflight {
+  can_start: boolean;
+  free_mb: number;
+  needed_mb: number;
+  warnings: string[];
+}
+
 /** Extrae el mensaje legible de un fallo de `invoke`. */
 export function errMsg(e: unknown): string {
   if (typeof e === "string") return e;
@@ -87,4 +112,10 @@ export const api = {
   restartServer: (name: string) => invoke<void>("restart_server", { name }),
   sendCommand: (name: string, cmd: string) => invoke<void>("send_command", { name, cmd }),
   readLog: (name: string, max_lines: number) => invoke<string[]>("read_log", { name, maxLines: max_lines }),
+  getProperties: (name: string) => invoke<Record<string, string>>("get_properties", { name }),
+  setProperties: (name: string, kvs: Record<string, string>) =>
+    invoke<void>("set_properties", { name, kvs }),
+  setRam: (name: string, ram_mb: number) => invoke<void>("set_ram", { name, ramMb: ram_mb }),
+  serverStats: () => invoke<AllStats>("server_stats"),
+  preflight: (name: string) => invoke<Preflight>("preflight", { name }),
 };

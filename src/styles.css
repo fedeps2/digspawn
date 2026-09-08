@@ -5,6 +5,10 @@
   font-weight: 400;
   color: #0f0f0f;
   background-color: #f6f6f6;
+  /* Que WebKit dibuje los controles nativos (popup del <select>,
+     scrollbars) con paleta clara. Sin esto, el popup usa colores del
+     sistema y el texto puede quedar ilegible. */
+  color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -225,6 +229,9 @@ input[type="range"] {
   :root {
     color: #f6f6f6;
     background-color: #2f2f2f;
+    /* Paleta oscura para los controles nativos: el popup del <select>
+       pasa a fondo oscuro con texto claro. */
+    color-scheme: dark;
   }
 
   .topbar {

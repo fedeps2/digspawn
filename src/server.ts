@@ -107,12 +107,16 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   const running = () => state === "running" || state === "starting" || state === "stopping";
 
   function paint(): void {
+    const dotCls =
+      state === "running" ? "ok" :
+      state === "starting" || state === "stopping" ? "wait" :
+      state === "crashed" ? "bad" : "off";
     const label =
-      state === "running" ? "🟢 corriendo" :
-      state === "starting" ? "🟡 arrancando…" :
-      state === "stopping" ? "🟡 frenando…" :
-      state === "crashed" ? "🔴 crasheó" : "⚪ parado";
-    stateEl.textContent = label;
+      state === "running" ? "corriendo" :
+      state === "starting" ? "arrancando…" :
+      state === "stopping" ? "frenando…" :
+      state === "crashed" ? "crasheó" : "parado";
+    stateEl.innerHTML = `<span class="dot ${dotCls}"></span> ${label}`;
     startBtn.disabled = busy || running();
     stopBtn.disabled = busy || !running();
     restartBtn.disabled = busy || !running();

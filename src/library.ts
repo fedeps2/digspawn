@@ -42,7 +42,7 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
         <div class="card-body">
           <strong>${escapeHtml(s.name)}</strong>
           <span class="badge">${escapeHtml(badge(s))}</span>
-          <span class="state">${s.state === "running" ? "🟢 corriendo" : "⚪ parado"} · ${s.ram_mb} MB</span>
+          <span class="state"><span class="dot ${s.state === "running" ? "ok" : "off"}"></span>${s.state === "running" ? "corriendo" : "parado"} · ${s.ram_mb} MB</span>
         </div>
         <button class="card-del" data-del="${escapeHtml(s.name)}" type="button" data-tip="Borra el server y su carpeta completa.">✕</button>
       </div>`,

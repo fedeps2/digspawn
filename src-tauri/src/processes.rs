@@ -52,7 +52,13 @@ struct Running {
     pid: u32,
     /// Últimas líneas del log (para el crashlog). Compartido por ambos pumps.
     ring: Arc<Mutex<VecDeque<String>>>,
+    /// Generación del arranque: distingue un server reiniciado del anterior.
+    /// Sin esto, un stop/watcher viejo puede cosechar al proceso NUEVO
+    /// (dejarlo huérfano e imparable desde la UI).
+    gen: u64,
 }
+
+static NEXT_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// Tope del ring (y de cada crashlog).
 pub const RING_CAP: usize = 300;
@@ -78,6 +84,19 @@ impl ProcessState {
 
     pub fn is_running(&self, name: &str) -> bool {
         self.running.lock().expect("lock").contains_key(name)
+    }
+
+    /// Saca la entrada solo si es la misma generación (evita cosechar
+    /// al proceso nuevo tras un restart). Devuelve si la sacó.
+    pub fn remove_if_gen(&self, name: &str, gen: u64) -> bool {
+        let mut running = self.running.lock().expect("lock");
+        match running.get(name) {
+            Some(r) if r.gen == gen => {
+                running.remove(name);
+                true
+            }
+            _ => false,
+        }
     }
 }
 
@@ -225,6 +244,14 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
 
     {
         let mut running = procs.running.lock().expect("lock");
+        // Re-chequeo atómico: si otro arranque se coló durante el spawn,
+        // se mata el duplicado en vez de dejar un java huérfano.
+        if running.contains_key(&clean) {
+            drop(running);
+            let _ = child.start_kill();
+            return Err(ServerError::AlreadyRunning(format!("\"{clean}\" ya está corriendo.")));
+        }
+        let gen = NEXT_GEN.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         running.insert(
             clean.clone(),
             Running {
@@ -232,6 +259,7 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
                 stdin: Arc::new(tokio::sync::Mutex::new(stdin)),
                 pid: pid.unwrap_or(0),
                 ring: ring.clone(),
+                gen,
             },
         );
     }
@@ -259,18 +287,17 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
         // Si nunca llegó el "Done", igual se espera al proceso.
         let _ = tokio::time::timeout(Duration::from_secs(240), ready_rx.recv()).await;
         let procs = app_w.state::<ProcessState>();
-        let (child, ring) = {
+        let (child, ring, gen) = {
             let running = procs.running.lock().expect("lock");
             match running.get(&name_w) {
-                Some(r) => (r.child.clone(), r.ring.clone()),
+                Some(r) => (r.child.clone(), r.ring.clone(), r.gen),
                 None => return, // stop() ya lo cosechó y emitió.
             }
         };
         // wait() sin el lock global tomado (stop() puede estar esperando).
         let status = child.lock().await.wait().await.ok();
-        let mut running = procs.running.lock().expect("lock");
-        if running.remove(&name_w).is_some() {
-            drop(running);
+        let procs = app_w.state::<ProcessState>();
+        if procs.remove_if_gen(&name_w, gen) {
             let crashed = !matches!(status.map(|s| s.success()), Some(true));
             if crashed {
                 if let Ok(dir) = server_path(&app_w, &name_w) {
@@ -321,50 +348,62 @@ async fn write_stdin(app: &AppHandle, name: &str, payload: &str) -> Result<()> {
 pub async fn stop_server(app: &AppHandle, name: &str) -> Result<()> {
     let clean = server_manager::validate_name(name)?;
     let procs = app.state::<ProcessState>();
-    if !procs.is_running(&clean) {
-        return Err(ServerError::NotRunning(format!("\"{clean}\" no está corriendo.")));
-    }
+    let gen = {
+        let running = procs.running.lock().expect("lock");
+        match running.get(&clean) {
+            Some(r) => r.gen,
+            None => {
+                return Err(ServerError::NotRunning(format!("\"{clean}\" no está corriendo.")));
+            }
+        }
+    };
     emit_state(app, &clean, STATE_STOPPING);
     write_stdin(app, &clean, "stop\n").await.ok();
     let deadline = tokio::time::Instant::now() + STOP_TIMEOUT;
     loop {
-        let exited = {
-            let entry = {
-                let running = procs.running.lock().expect("lock");
-                running.get(&clean).map(|r| r.child.clone())
-            };
-            match entry {
-                None => {
-                    // El vigilante ya lo cosechó y emitió el estado final.
-                    return Ok(());
-                }
-                Some(child) => {
+        let entry = {
+            let running = procs.running.lock().expect("lock");
+            match running.get(&clean) {
+                // Nuestra generación ya no está (restart/watcher la cosechó).
+                Some(r) if r.gen == gen => Some(r.child.clone()),
+                _ => None,
+            }
+        };
+        match entry {
+            None => {
+                // Ya la cosechó el vigilante u otro stop; o un restart
+                // puso una generación nueva que no nos pertenece.
+                return Ok(());
+            }
+            Some(child) => {
+                let exited = {
                     let mut child = child.lock().await;
                     match child.try_wait() {
                         Ok(Some(_)) => true,
                         Ok(None) => false,
                         Err(_) => true,
                     }
+                };
+                if exited {
+                    if procs.remove_if_gen(&clean, gen) {
+                        emit_state(app, &clean, STATE_STOPPED);
+                    }
+                    return Ok(());
                 }
             }
-        };
-        if exited {
-            let mut running = procs.running.lock().expect("lock");
-            if running.remove(&clean).is_some() {
-                emit_state(app, &clean, STATE_STOPPED);
-            }
-            return Ok(());
         }
         if tokio::time::Instant::now() >= deadline {
             let entry = {
                 let running = procs.running.lock().expect("lock");
-                running.get(&clean).map(|r| r.child.clone())
+                match running.get(&clean) {
+                    Some(r) if r.gen == gen => Some(r.child.clone()),
+                    _ => None,
+                }
             };
             if let Some(child) = entry {
                 let _ = child.lock().await.start_kill();
             }
-            let mut running = procs.running.lock().expect("lock");
-            if running.remove(&clean).is_some() {
+            if procs.remove_if_gen(&clean, gen) {
                 emit_state(app, &clean, STATE_STOPPED);
             }
             return Ok(());
@@ -386,18 +425,18 @@ pub async fn restart_server(app: &AppHandle, name: &str) -> Result<()> {
 pub async fn force_stop(app: &AppHandle, name: &str) -> Result<()> {
     let clean = server_manager::validate_name(name)?;
     let procs = app.state::<ProcessState>();
-    let child = {
+    let (child, gen) = {
         let running = procs.running.lock().expect("lock");
-        running
-            .get(&clean)
-            .map(|r| r.child.clone())
-            .ok_or_else(|| ServerError::NotRunning(format!("\"{clean}\" no está corriendo.")))?
+        match running.get(&clean) {
+            Some(r) => (r.child.clone(), r.gen),
+            None => {
+                return Err(ServerError::NotRunning(format!("\"{clean}\" no está corriendo.")));
+            }
+        }
     };
     // Best-effort: si ya murió, igual se limpia abajo.
     let _ = child.lock().await.start_kill();
-    let mut running = procs.running.lock().expect("lock");
-    if running.remove(&clean).is_some() {
-        drop(running);
+    if procs.remove_if_gen(&clean, gen) {
         emit_line(app, &clean, "Apagado FORZADO por el usuario (puede haber saves dañados).");
         emit_state(app, &clean, STATE_STOPPED);
     }

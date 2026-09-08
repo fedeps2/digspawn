@@ -766,6 +766,8 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     }),
     await listen<ServerStateEvent>("server-state", (ev) => {
       if (ev.payload.server !== name) return;
+      // TEMPORAL diagnóstico.
+      void api.debugLog(`state name=${name} ${state} -> ${ev.payload.state}`);
       state = ev.payload.state;
       busy = false;
       if (state === "running") {
@@ -838,8 +840,21 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   }
 
   async function onToggle(): Promise<void> {
-    if (busy) return;
-    if (state === "running" || state === "starting" || state === "stopping") {
+    const active = state === "running" || state === "starting" || state === "stopping";
+    // El 2º Frenar abre el modal aunque el botón esté en busy: si no,
+    // el modal era inalcanzable (busy deshabilita hasta que muere).
+    if (stopRequested && active) {
+      void api.debugLog(`toggle-force-modal name=${name} state=${state}`);
+      openForceModal();
+      return;
+    }
+    if (busy) {
+      // TEMPORAL diagnóstico.
+      void api.debugLog(`toggle-ignored-busy name=${name} state=${state}`);
+      return;
+    }
+    void api.debugLog(`toggle-click name=${name} state=${state} stopRequested=${stopRequested}`);
+    if (active) {
       if (stopRequested) {
         openForceModal();
         return;
@@ -906,7 +921,11 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     paint();
   });
 
+  // TEMPORAL diagnóstico.
+  void api.debugLog(`openServer(entry) name=${name} tab=${initialTab}`);
+
   view.querySelector("#sv-back")?.addEventListener("click", () => {
+    void api.debugLog(`back-click name=${name}`);
     unlistens.forEach((u) => u());
     window.clearInterval(pollTimer);
     onBack();

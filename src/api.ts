@@ -189,6 +189,8 @@ export const api = {
   localIps: () => invoke<string[]>("local_ips"),
   checkUpdate: () => invoke<UpdateCheck>("check_update"),
   importServer: (input: ImportInput) => invoke<ServerInfo>("import_server", { input }),
+  // TEMPORAL diagnóstico: no await, best-effort.
+  debugLog: (msg: string) => invoke<void>("debug_log", { msg }).catch(() => undefined),
   listPlugins: (name: string) => invoke<PluginInfo[]>("list_plugins", { name }),
   importPlugin: (name: string, path: string) => invoke<string>("import_plugin", { name, path }),
   deletePlugin: (name: string, file: string) => invoke<void>("delete_plugin", { name, file }),

@@ -18,8 +18,15 @@ if (!view || !wizardRoot || !settingsBtn || !banner) {
   throw new Error("Falta el shell base (index.html).");
 }
 
+// TEMPORAL diagnóstico del salto a biblioteca: rastro de navegación + errores.
+// Se saca cuando se encuentre la causa.
+window.addEventListener("error", (ev) => {
+  void api.debugLog(`window.onerror: ${ev.message}`);
+});
+
 async function showLibrary(): Promise<void> {
   const v = view as HTMLElement;
+  void api.debugLog(`showLibrary() stack=${new Error().stack?.split("\n").slice(1, 4).join(" | ") ?? "?"}`);
   await renderLibrary(v, {
     onNew: () => openWizard(wizardRoot as HTMLElement, () => void showLibrary()),
     onImport: () => openImport(wizardRoot as HTMLElement, () => void showLibrary()),

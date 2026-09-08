@@ -198,6 +198,7 @@ a:hover {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 0.9rem;
+  align-content: start;
 }
 
 .card {
@@ -685,7 +686,7 @@ input[type="range"] {
   display: grid;
   grid-template-columns: 1fr 264px;
   gap: 1rem;
-  align-items: stretch;
+  align-items: start;
   min-height: calc(100dvh - 190px);
 }
 
@@ -702,6 +703,7 @@ input[type="range"] {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 0.9rem;
+  align-self: stretch;
 }
 
 .sb-head {

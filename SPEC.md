@@ -29,7 +29,10 @@ pesado → fluidez). DECIDIDO.
 - **Wizard de Java: auto-derivado de la versión de MC** (override oculto).
 
 ## FUERA de V1 (anotado para V2)
-- Buscador de mods (Modrinth + CurseForge) + instalación.
+- Plugins in-app (buscador + instalación, **Modrinth-only**; CurseForge descartado
+  por API key/ToS, Hangar por catálogo chico) — HITO PLANEADO como pestaña
+  "Plugins" en Modo servidor (Paper-only, ver §3). Los MODS (Fabric/Forge) son
+  otro árbol aparte, más adelante.
 - Soporte Fabric/Forge/NeoForge/Quilt (modded).
 - Tipos plugin extra: Spigot / Purpur / Folia.
 - Híbridos mods+plugins: Mohist / Arclight / Magma / CatServer (versiones viejas,
@@ -62,8 +65,9 @@ Paper/Vanilla solo, sin perder nada. Facha y alcance extra van DESPUÉS.
 - Icono custom por server, carpetas de agrupación en la biblioteca, temas.
 - Override manual de Java (desplegable avanzado), ZGC, snapshots toggle.
 - Auto-update real (Opción B). Importar server existente. Editor de comandos custom.
-- Todo el árbol V2: modded (Fabric/Forge/NeoForge/Quilt), Spigot/Purpur/Folia,
-  híbridos (Mohist/Arclight/Magma), buscador Modrinth/CurseForge, backups.
+- Todo el árbol V2: modded (Fabric/Forge/NeoForge/Quilt — mods, no plugins),
+  Spigot/Purpur/Folia, híbridos (Mohist/Arclight/Magma), backups. Buscador de
+  plugins SOLO Modrinth (CurseForge descartado por API key/ToS).
 
 ### V2: Custom titlebar & themes (anotado, NO se toca en MVP)
 **Custom titlebar** — Tauri lo soporta nativamente:
@@ -211,6 +215,9 @@ post-creación.
     - `gamemode` → survival/creative/adventure/spectator + selector.
     - `whitelist add` → `<jugador>`.
     - Cada botón arma el comando y lo mete al pipe (y al log como eco).
+  - **Plugins (Paper-only; oculta en Vanilla):** buscador Modrinth + instalar/
+    desinstalar con progreso de descarga. Dependencias `required` en cascada.
+    Avísale que los cambios aplican al reiniciar el server. HITO PLANEADO (ver §).
   - **Ajustes:** editor por secciones de `server.properties` (lectura/escritura
     con el server parado; avisa si está corriendo que se aplica en el próximo restart).
 - Cerrar la ventana con server corriendo → **minimiza a tray** (no lo mata por

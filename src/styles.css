@@ -685,7 +685,8 @@ input[type="range"] {
   display: grid;
   grid-template-columns: 1fr 264px;
   gap: 1rem;
-  align-items: start;
+  align-items: stretch;
+  min-height: calc(100dvh - 190px);
 }
 
 .card.sel {
@@ -701,8 +702,6 @@ input[type="range"] {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 0.9rem;
-  position: sticky;
-  top: 1rem;
 }
 
 .sb-head {

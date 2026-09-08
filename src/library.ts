@@ -51,22 +51,17 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
   const byName = (n: string) => servers.find((s) => s.name === n);
 
   function render(): void {
-    if (servers.length === 0) {
-      view.innerHTML = `
-        <div class="empty">
+    const gridHtml = servers.length === 0
+      ? `<div class="empty">
           <p>No tenés ningún server todavía.</p>
           <div class="row" style="gap:.5rem;justify-content:center">
             <button id="empty-new" type="button">Nuevo server</button>
             <button id="empty-import" type="button">Importar</button>
           </div>
-        </div>`;
-      view.querySelector("#empty-new")?.addEventListener("click", hooks.onNew);
-      view.querySelector("#empty-import")?.addEventListener("click", hooks.onImport);
-      return;
-    }
-    const cards = servers
-      .map(
-        (s) => `
+        </div>`
+      : `<div class="grid">${servers
+        .map(
+          (s) => `
         <div class="card ${selected === s.name ? "sel" : ""}" data-open="${escapeHtml(s.name)}" data-tip="Click para seleccionar, doble click para abrir.">
           <div class="card-icon" data-icon="${escapeHtml(s.name)}">${s.type === "paper" ? "📄" : "🧱"}</div>
           <div class="card-body">
@@ -75,13 +70,15 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
             <span class="state"><span class="dot ${dotClass(s.state)}"></span>${stateLabel(s.state)} · ${s.ram_mb} MB</span>
           </div>
         </div>`,
-      )
-      .join("");
+        )
+        .join("")}</div>`;
     view.innerHTML = `
       <div class="lib-layout">
-        <div class="grid">${cards}</div>
+        ${gridHtml}
         <aside class="sidebar">${sidebar()}</aside>
       </div>`;
+    view.querySelector("#empty-new")?.addEventListener("click", hooks.onNew);
+    view.querySelector("#empty-import")?.addEventListener("click", hooks.onImport);
     wireCards();
     wireSidebar();
     void paintIcons();

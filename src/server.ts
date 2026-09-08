@@ -82,15 +82,17 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     <div id="sv-memwarn" class="warn-box" hidden></div>
     <p id="sv-msg" class="muted"></p>
     <div id="sv-java" class="muted" hidden></div>
-    <div class="tabs">
-      <button id="tab-consola" type="button" data-tip="Lo que el server está diciendo en vivo, y caja para mandarle comandos.">Consola</button>
-      <button id="tab-jugadores" type="button" data-tip="Quién está conectado ahora (se detecta del log).">Jugadores</button>
-      <button id="tab-comandos" type="button" data-tip="Atajos para los comandos más usados, sin escribirlos a mano.">Comandos</button>
-      ${info.type === "paper" ? `<button id="tab-plugins" type="button" data-tip="Plugins (.jar) del server. Después va a servir también para mods.">Plugins</button>` : ""}
-      <button id="tab-ajustes" type="button" data-tip="Configuración del server. Solo se edita frenado; aplica al arrancar.">Ajustes</button>
-      <button id="tab-historial" type="button" data-tip="Logs guardados: el último log, rotados viejos y crashlogs.">Historial</button>
+    <div class="sv-main">
+      <div class="tabs">
+        <button id="tab-consola" type="button" data-tip="Lo que el server está diciendo en vivo, y caja para mandarle comandos.">Consola</button>
+        <button id="tab-jugadores" type="button" data-tip="Quién está conectado ahora (se detecta del log).">Jugadores</button>
+        <button id="tab-comandos" type="button" data-tip="Atajos para los comandos más usados, sin escribirlos a mano.">Comandos</button>
+        ${info.type === "paper" ? `<button id="tab-plugins" type="button" data-tip="Plugins (.jar) del server. Después va a servir también para mods.">Plugins</button>` : ""}
+        <button id="tab-ajustes" type="button" data-tip="Configuración del server. Solo se edita frenado; aplica al arrancar.">Ajustes</button>
+        <button id="tab-historial" type="button" data-tip="Logs guardados: el último log, rotados viejos y crashlogs.">Historial</button>
+      </div>
+      <div id="sv-tab-body"></div>
     </div>
-    <div id="sv-tab-body"></div>
     <div id="sv-modal-root"></div>`;
 
   const msgEl = view.querySelector<HTMLElement>("#sv-msg")!;

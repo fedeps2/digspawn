@@ -684,6 +684,35 @@ button.danger {
   border-bottom: 1px solid var(--border);
   padding-bottom: 0.6rem;
 }
+
+/* Tabs verticales: columna a la izquierda, contenido a la derecha. */
+.sv-main {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+.sv-main .tabs {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  margin: 0;
+  border-bottom: none;
+  border-right: 1px solid var(--border);
+  padding-bottom: 0;
+  padding-right: 0.6rem;
+  position: sticky;
+  top: 0.5rem;
+}
+
+.sv-main .tabs button {
+  text-align: left;
+  width: 100%;
+}
+
+.sv-main #sv-tab-body {
+  min-width: 0;
+}
 .tabs button {
   background: transparent;
   border: 1px solid transparent;

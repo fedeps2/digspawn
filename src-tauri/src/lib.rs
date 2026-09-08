@@ -5,10 +5,12 @@ pub mod errors;
 pub mod java;
 pub mod mojang_api;
 pub mod paper_api;
+pub mod plugins;
 pub mod processes;
 pub mod properties;
 pub mod runtime;
 pub mod server_manager;
+pub mod settings;
 pub mod update;
 
 use serde::Serialize;
@@ -176,6 +178,36 @@ fn local_ips() -> Vec<String> {
 }
 
 #[tauri::command]
+fn list_plugins(app: AppHandle, name: String) -> Result<Vec<plugins::PluginInfo>> {
+    plugins::list_plugins(&app, &name)
+}
+
+#[tauri::command]
+fn import_plugin(app: AppHandle, name: String, path: String) -> Result<String> {
+    plugins::import_plugin(&app, &name, &path)
+}
+
+#[tauri::command]
+fn delete_plugin(app: AppHandle, name: String, file: String) -> Result<()> {
+    plugins::delete_plugin(&app, &name, &file)
+}
+
+#[tauri::command]
+fn set_plugin_enabled(app: AppHandle, name: String, file: String, enabled: bool) -> Result<String> {
+    plugins::set_plugin_enabled(&app, &name, &file, enabled)
+}
+
+#[tauri::command]
+fn get_settings(app: AppHandle) -> Result<settings::Settings> {
+    settings::get_settings(&app)
+}
+
+#[tauri::command]
+fn set_settings(app: AppHandle, settings: settings::Settings) -> Result<settings::Settings> {
+    settings::set_settings(&app, settings)
+}
+
+#[tauri::command]
 async fn check_update() -> update::UpdateCheck {
     update::check_update().await
 }
@@ -216,6 +248,12 @@ pub fn run() {
             local_ips,
             check_update,
             import_server,
+            list_plugins,
+            import_plugin,
+            delete_plugin,
+            set_plugin_enabled,
+            get_settings,
+            set_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

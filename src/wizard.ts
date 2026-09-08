@@ -239,7 +239,14 @@ export function openWizard(root: HTMLElement, onDone: () => void): void {
     } catch {
       st.maxRam = 8192;
     }
-    st.ram = Math.min(2048, st.maxRam);
+    // Default de la config general (solo si el usuario no tocó el slider:
+    // al entrar al paso 5 el valor sigue siendo el inicial).
+    try {
+      const s = await api.getSettings();
+      st.ram = Math.min(Math.max(512, s.default_ram_mb), st.maxRam);
+    } catch {
+      st.ram = Math.min(2048, st.maxRam);
+    }
     render();
   }
 

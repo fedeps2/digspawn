@@ -114,6 +114,17 @@ export interface ImportInput {
   accept_eula: boolean;
 }
 
+export interface PluginInfo {
+  file: string;
+  enabled: boolean;
+  size: number;
+}
+
+export interface Settings {
+  check_updates_on_start: boolean;
+  default_ram_mb: number;
+}
+
 /** Extrae el mensaje legible de un fallo de `invoke`. */
 export function errMsg(e: unknown): string {
   if (typeof e === "string") return e;
@@ -152,4 +163,11 @@ export const api = {
   localIps: () => invoke<string[]>("local_ips"),
   checkUpdate: () => invoke<UpdateCheck>("check_update"),
   importServer: (input: ImportInput) => invoke<ServerInfo>("import_server", { input }),
+  listPlugins: (name: string) => invoke<PluginInfo[]>("list_plugins", { name }),
+  importPlugin: (name: string, path: string) => invoke<string>("import_plugin", { name, path }),
+  deletePlugin: (name: string, file: string) => invoke<void>("delete_plugin", { name, file }),
+  setPluginEnabled: (name: string, file: string, enabled: boolean) =>
+    invoke<string>("set_plugin_enabled", { name, file, enabled }),
+  getSettings: () => invoke<Settings>("get_settings"),
+  setSettings: (settings: Settings) => invoke<Settings>("set_settings", { settings }),
 };

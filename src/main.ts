@@ -7,14 +7,16 @@ import { renderLibrary } from "./library";
 import { openWizard } from "./wizard";
 import { openServer } from "./server";
 import { openImport } from "./import";
+import { openSettings } from "./settings";
 
 const view = document.querySelector<HTMLElement>("#view");
 const wizardRoot = document.querySelector<HTMLElement>("#wizard-root");
 const newBtn = document.querySelector<HTMLButtonElement>("#new-server-btn");
 const importBtn = document.querySelector<HTMLButtonElement>("#import-btn");
+const settingsBtn = document.querySelector<HTMLButtonElement>("#settings-btn");
 const banner = document.querySelector<HTMLElement>("#update-banner");
 
-if (!view || !wizardRoot || !newBtn || !importBtn || !banner) {
+if (!view || !wizardRoot || !newBtn || !importBtn || !settingsBtn || !banner) {
   throw new Error("Falta el shell base (index.html).");
 }
 
@@ -39,6 +41,10 @@ importBtn.addEventListener("click", () => {
   openImport(wizardRoot as HTMLElement, () => void showLibrary());
 });
 
+settingsBtn.addEventListener("click", () => {
+  void openSettings(view as HTMLElement, () => void showLibrary());
+});
+
 function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => {
     switch (c) {
@@ -52,10 +58,17 @@ function esc(s: string): string {
 }
 
 // Update check una vez por sesión (silent fail: sin banner si no hay red).
+// Respeta el setting general.
 let updateChecked = false;
 async function checkUpdateOnce(): Promise<void> {
   if (updateChecked) return;
   updateChecked = true;
+  try {
+    const s = await api.getSettings();
+    if (!s.check_updates_on_start) return;
+  } catch {
+    // Sin settings se sigue igual (default: chequear).
+  }
   let c;
   try {
     c = await api.checkUpdate();

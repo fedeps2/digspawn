@@ -2,6 +2,8 @@
 // pestañas Consola (log + stdin) y Ajustes (props + RAM), preflight al iniciar.
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   api,
   errMsg,
@@ -41,7 +43,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   let state: string = info.state;
   let ramMb: number = info.ram_mb;
   let busy = false;
-  let tab: "consola" | "ajustes" | "historial" | "comandos" | "jugadores" = "consola";
+  let tab: "consola" | "ajustes" | "historial" | "comandos" | "jugadores" | "plugins" = "consola";
   let props: Record<string, string> | null = null;
   let propsError: string | null = null;
   let propsMsg: string | null = null;
@@ -75,6 +77,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       <button id="tab-consola" type="button" data-tip="Lo que el server está diciendo en vivo, y caja para mandarle comandos.">Consola</button>
       <button id="tab-jugadores" type="button" data-tip="Quién está conectado ahora (se detecta del log).">Jugadores</button>
       <button id="tab-comandos" type="button" data-tip="Atajos para los comandos más usados, sin escribirlos a mano.">Comandos</button>
+      <button id="tab-plugins" type="button" data-tip="Plugins (.jar) del server. Después va a servir también para mods.">Plugins</button>
       <button id="tab-ajustes" type="button" data-tip="Configuración del server. Solo se edita frenado; aplica al arrancar.">Ajustes</button>
       <button id="tab-historial" type="button" data-tip="Logs guardados: el último log, rotados viejos y crashlogs.">Historial</button>
     </div>
@@ -93,6 +96,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   const tabHistorial = view.querySelector<HTMLButtonElement>("#tab-historial")!;
   const tabComandos = view.querySelector<HTMLButtonElement>("#tab-comandos")!;
   const tabJugadores = view.querySelector<HTMLButtonElement>("#tab-jugadores")!;
+  const tabPlugins = view.querySelector<HTMLButtonElement>("#tab-plugins")!;
   const players = new Map<string, number>(); // nombre -> timestamp de join
   let pendingEcho: string[] = [];
   let logQueue: string[] = [];
@@ -115,11 +119,13 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     tabHistorial.classList.toggle("sel", tab === "historial");
     tabComandos.classList.toggle("sel", tab === "comandos");
     tabJugadores.classList.toggle("sel", tab === "jugadores");
+    tabPlugins.classList.toggle("sel", tab === "plugins");
     if (tab === "consola") renderConsola();
     else if (tab === "ajustes") void renderAjustes();
     else if (tab === "historial") void renderHistorial();
     else if (tab === "comandos") renderComandos();
-    else renderJugadores();
+    else if (tab === "jugadores") renderJugadores();
+    else void renderPlugins();
   }
 
   function say(msg: string, isErr: boolean): void {
@@ -511,6 +517,110 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     });
   }
 
+  // ---- Plugins (base para futuro Mods) ----
+  let plugFiles: import("./api").PluginInfo[] | null = null;
+  let plugError: string | null = null;
+  let plugBusy = false;
+
+  async function renderPlugins(): Promise<void> {
+    if (plugFiles === null && plugError === null) {
+      tabBody.innerHTML = `<p class="muted">Cargando plugins…</p>`;
+      try {
+        plugFiles = await api.listPlugins(name);
+      } catch (e) {
+        plugError = errMsg(e);
+      }
+    }
+    if (plugError !== null) {
+      tabBody.innerHTML = `<p class="error">${esc(plugError)}</p>`;
+      return;
+    }
+    const files = plugFiles ?? [];
+    tabBody.innerHTML = `
+      <div class="plug-actions">
+        <button id="plug-add" type="button" data-tip="Elegí un .jar de tu compu para sumarlo a este server.">Importar .jar</button>
+        <span class="muted">o arrastrá el .jar acá adentro. Cambios aplican al reiniciar.</span>
+      </div>
+      <div id="plug-drop" class="plug-drop" hidden> soltá para importar </div>
+      ${plugBusy ? `<p class="muted">Trabajando…</p>` : ""}
+      ${files.length === 0
+        ? `<p class="muted">Sin plugins. Los .jar van a la carpeta plugins/ del server.</p>`
+        : `<div class="players">${files
+            .map(
+              (f) => `<div class="card ${f.enabled ? "" : "off"}">
+                <div class="card-icon">${f.enabled ? "🧩" : "💤"}</div>
+                <div class="card-body"><strong>${esc(f.file)}</strong>
+                <span class="state">${f.enabled ? "prendido" : "apagado"} · ${(f.size / 1024).toFixed(0)} KB</span></div>
+                <button data-plug-toggle="${esc(f.file)}" type="button" title="${f.enabled ? "Apagar" : "Prender"}">${f.enabled ? "⏸" : "▶"}</button>
+                <button data-plug-del="${esc(f.file)}" type="button" title="Borrar">✕</button>
+              </div>`,
+            )
+            .join("")}</div>`}`;
+    tabBody.querySelector("#plug-add")?.addEventListener("click", () => void pickPlugins());
+    tabBody.querySelectorAll<HTMLButtonElement>("[data-plug-toggle]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        const file = b.dataset.plugToggle ?? "";
+        const cur = plugFiles?.find((p) => p.file === file);
+        plugBusy = true;
+        paint();
+        try {
+          await api.setPluginEnabled(name, file, !(cur?.enabled ?? true));
+          plugFiles = null;
+        } catch (e) {
+          say(errMsg(e), true);
+        }
+        plugBusy = false;
+        paint();
+      });
+    });
+    tabBody.querySelectorAll<HTMLButtonElement>("[data-plug-del]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        const file = b.dataset.plugDel ?? "";
+        if (!window.confirm(`¿Borrar el plugin "${file}"?`)) return;
+        plugBusy = true;
+        paint();
+        try {
+          await api.deletePlugin(name, file);
+          plugFiles = null;
+        } catch (e) {
+          say(errMsg(e), true);
+        }
+        plugBusy = false;
+        paint();
+      });
+    });
+  }
+
+  async function pickPlugins(): Promise<void> {
+    const sel = await open({
+      multiple: true,
+      filters: [{ name: "Plugins", extensions: ["jar"] }],
+    }).catch(() => null);
+    const paths = Array.isArray(sel) ? sel : sel ? [sel] : [];
+    if (paths.length === 0) return;
+    await importPluginPaths(paths);
+  }
+
+  async function importPluginPaths(paths: string[]): Promise<void> {
+    plugBusy = true;
+    paint();
+    let ok = 0;
+    let lastErr = "";
+    for (const p of paths) {
+      try {
+        await api.importPlugin(name, p);
+        ok += 1;
+      } catch (e) {
+        lastErr = errMsg(e);
+      }
+    }
+    plugFiles = null;
+    plugBusy = false;
+    paint();
+    if (ok > 0) say(`Importado${ok === 1 ? "" : "s"} ${ok} plugin${ok === 1 ? "" : "s"}.`, false);
+    if (lastErr) say(lastErr, true);
+  }
+
   // ---- Stats en vivo ----
   async function pollStats(): Promise<void> {
     try {
@@ -612,6 +722,10 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     tab = "jugadores";
     paint();
   });
+  tabPlugins.addEventListener("click", () => {
+    tab = "plugins";
+    paint();
+  });
   tabHistorial.addEventListener("click", () => {
     tab = "historial";
     paint();
@@ -622,6 +736,29 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     window.clearInterval(pollTimer);
     onBack();
   });
+
+  // Drag & drop de .jar (solo actúa en la pestaña Plugins).
+  try {
+    const dropUnlisten = await getCurrentWebview().onDragDropEvent((ev) => {
+      if (tab !== "plugins") return;
+      if (ev.payload.type === "over" || ev.payload.type === "enter") {
+        tabBody.querySelector("#plug-drop")?.removeAttribute("hidden");
+      } else if (ev.payload.type === "leave") {
+        tabBody.querySelector("#plug-drop")?.setAttribute("hidden", "");
+      } else if (ev.payload.type === "drop") {
+        tabBody.querySelector("#plug-drop")?.setAttribute("hidden", "");
+        const jars = ev.payload.paths.filter((p) => p.toLowerCase().endsWith(".jar"));
+        if (jars.length === 0) {
+          say("Eso no es un .jar.", true);
+          return;
+        }
+        void importPluginPaths(jars);
+      }
+    });
+    unlistens.push(dropUnlisten);
+  } catch {
+    // Sin drag&drop queda el botón Importar (no es error).
+  }
 
   paint();
   pollTimer = window.setInterval(() => void pollStats(), 2000);

@@ -687,7 +687,8 @@ input[type="range"] {
   grid-template-columns: 1fr 264px;
   gap: 1rem;
   align-items: start;
-  min-height: calc(100dvh - 190px);
+  min-height: calc(100dvh - 64px);
+  margin-top: -1.5rem;
   margin-right: -1.25rem;
 }
 
@@ -702,8 +703,10 @@ input[type="range"] {
   gap: 0.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
+  border-top: none;
   border-right: none;
-  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  border-bottom: none;
+  border-radius: 0;
   padding: 0.9rem;
   align-self: stretch;
 }

@@ -34,6 +34,25 @@ body {
   font-size: 1.25rem;
 }
 
+.topbar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #fff8e1;
+  border-bottom: 1px solid #ffe082;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.9rem;
+}
+
+.update-banner button {
+  padding: 0.3em 0.9em;
+}
+
 #view {
   padding: 1.25rem;
   max-width: 960px;
@@ -475,5 +494,10 @@ input[type="range"] {
   .state,
   .type-card span {
     color: #aaa;
+  }
+
+  .update-banner {
+    background: #3a3000;
+    border-bottom-color: #665500;
   }
 }

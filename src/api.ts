@@ -95,6 +95,25 @@ export interface LogFile {
   modified: number; // unix timestamp
 }
 
+export interface UpdateCheck {
+  current: string;
+  latest: string;
+  url: string;
+  notes: string;
+  required: boolean;
+  available: boolean;
+  checked: boolean;
+}
+
+export interface ImportInput {
+  path: string;
+  name: string;
+  server_type: ServerType;
+  version: string;
+  ram_mb: number;
+  accept_eula: boolean;
+}
+
 /** Extrae el mensaje legible de un fallo de `invoke`. */
 export function errMsg(e: unknown): string {
   if (typeof e === "string") return e;
@@ -131,4 +150,6 @@ export const api = {
   setIcon: (name: string, data_url: string) => invoke<void>("set_icon", { name, dataUrl: data_url }),
   getIcon: (name: string) => invoke<string | null>("get_icon", { name }),
   localIps: () => invoke<string[]>("local_ips"),
+  checkUpdate: () => invoke<UpdateCheck>("check_update"),
+  importServer: (input: ImportInput) => invoke<ServerInfo>("import_server", { input }),
 };

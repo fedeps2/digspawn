@@ -9,12 +9,13 @@ pub mod processes;
 pub mod properties;
 pub mod runtime;
 pub mod server_manager;
+pub mod update;
 
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
 use errors::{Result, ServerError};
-use server_manager::{CreateInput, ServerInfo};
+use server_manager::{CreateInput, ImportInput, ServerInfo};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct VersionItem {
@@ -174,11 +175,22 @@ fn local_ips() -> Vec<String> {
     server_manager::local_ips()
 }
 
+#[tauri::command]
+async fn check_update() -> update::UpdateCheck {
+    update::check_update().await
+}
+
+#[tauri::command]
+fn import_server(app: AppHandle, input: ImportInput) -> Result<ServerInfo> {
+    server_manager::import_server(&app, input)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(processes::ProcessState::new())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_servers,
             list_versions,
@@ -202,6 +214,8 @@ pub fn run() {
             set_icon,
             get_icon,
             local_ips,
+            check_update,
+            import_server,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

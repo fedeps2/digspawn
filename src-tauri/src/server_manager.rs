@@ -354,6 +354,124 @@ pub async fn create_server_at(
     })
 }
 
+// ---------------------------------------------------------------------------
+// Importar server existente: copia jar + config + mundos (sin logs) y
+// escribe el sidecar. El original queda intacto.
+// ---------------------------------------------------------------------------
+
+/// Carpetas que no se copian al importar (logs propios + caches).
+const IMPORT_SKIP: &[&str] = &["logs", "crashlogs", "cache"];
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ImportInput {
+    /// Carpeta origen (la que tiene el server.jar).
+    pub path: String,
+    pub name: String,
+    pub server_type: String,
+    pub version: String,
+    pub ram_mb: u64,
+    pub accept_eula: bool,
+}
+
+fn copy_dir_filtered(src: &std::path::Path, dst: &std::path::Path) -> Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let from = entry.path();
+        let to = dst.join(&name);
+        if from.is_dir() {
+            if IMPORT_SKIP.contains(&name.as_str()) {
+                continue;
+            }
+            copy_dir_filtered(&from, &to)?;
+        } else {
+            if name == SIDECAR {
+                continue; // el sidecar se regenera abajo
+            }
+            std::fs::copy(&from, &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// Núcleo testeable con dirs explícitos.
+pub fn import_server_at(
+    servers: &std::path::Path,
+    input: ImportInput,
+) -> Result<ServerInfo> {
+    let src = std::path::Path::new(&input.path);
+    if !src.is_dir() {
+        return Err(ServerError::NotFound("Esa carpeta no existe.".to_string()));
+    }
+    if !src.join("server.jar").is_file() {
+        return Err(ServerError::NotFound(
+            "Ahí no hay un server.jar. Elegí la carpeta del server.".to_string(),
+        ));
+    }
+    let name = validate_name(&input.name)?;
+    let server_type = input.server_type.to_lowercase();
+    if server_type != "paper" && server_type != "vanilla" {
+        return Err(ServerError::InvalidName(
+            "Tipo desconocido. Válidos: paper, vanilla.".to_string(),
+        ));
+    }
+    if input.version.trim().is_empty() {
+        return Err(ServerError::InvalidName("Elegí una versión.".to_string()));
+    }
+    if input.ram_mb < 512 {
+        return Err(ServerError::InvalidName("La RAM mínima es 512 MB.".to_string()));
+    }
+    let target = servers.join(&name);
+    if target.exists() {
+        return Err(ServerError::AlreadyExists(format!("Ya existe un server llamado \"{name}\".")));
+    }
+    // EULA: si el importado no la trae firmada, pedir consentimiento.
+    let eula_ok = std::fs::read_to_string(src.join("eula.txt"))
+        .map(|c| c.lines().any(|l| l.trim() == "eula=true"))
+        .unwrap_or(false);
+    if !eula_ok && !input.accept_eula {
+        return Err(ServerError::EulaNotAccepted(
+            "Ese server no trae la EULA firmada: aceptala para importarlo.".to_string(),
+        ));
+    }
+
+    std::fs::create_dir_all(&target)?;
+    let setup = (|| -> Result<()> {
+        copy_dir_filtered(src, &target)?;
+        if !target.join("server.properties").is_file() {
+            std::fs::write(target.join("server.properties"), crate::properties::defaults())?;
+        }
+        if !eula_ok {
+            std::fs::write(target.join("eula.txt"), "eula=true\n")?;
+        }
+        let meta = ServerMeta {
+            server_type: server_type.clone(),
+            version: input.version.trim().to_string(),
+            ram_mb: input.ram_mb,
+        };
+        std::fs::write(target.join(SIDECAR), serde_json::to_string_pretty(&meta)?)?;
+        Ok(())
+    })();
+    if let Err(e) = setup {
+        let _ = std::fs::remove_dir_all(&target);
+        return Err(e);
+    }
+    Ok(ServerInfo {
+        name,
+        server_type,
+        version: input.version.trim().to_string(),
+        ram_mb: input.ram_mb,
+        state: "stopped".to_string(),
+    })
+}
+
+pub fn import_server(app: &AppHandle, input: ImportInput) -> Result<ServerInfo> {
+    let dir = servers_dir(app)?;
+    std::fs::create_dir_all(&dir)?;
+    import_server_at(&dir, input)
+}
+
 /// Wrapper Tauri: resuelve el dir real y emite `download-progress`.
 pub async fn create_server(app: &AppHandle, input: CreateInput) -> Result<ServerInfo> {
     let dir = servers_dir(app)?;
@@ -423,6 +541,77 @@ mod tests {
             assert!(addr.is_ipv4(), "{ip} no es v4");
             assert!(!addr.is_loopback(), "{ip} es loopback");
         }
+    }
+
+    #[test]
+    fn import_copies_all_but_logs_and_signs_eula() {
+        let tmp = std::env::temp_dir().join("digspawn-test-import");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let src = tmp.join("origen");
+        std::fs::create_dir_all(src.join("world")).unwrap();
+        std::fs::create_dir_all(src.join("logs")).unwrap();
+        std::fs::write(src.join("server.jar"), b"fake-jar").unwrap();
+        std::fs::write(src.join("server.properties"), "motd=Viejo\n").unwrap();
+        std::fs::write(src.join("eula.txt"), "eula=false\n").unwrap();
+        std::fs::write(src.join("world").join("level.dat"), b"data").unwrap();
+        std::fs::write(src.join("logs").join("latest.log"), b"basura").unwrap();
+        let servers = tmp.join("servers");
+
+        // Sin aceptar eula y sin eula firmada: falla y no deja nada.
+        let err = import_server_at(
+            &servers,
+            ImportInput {
+                path: src.to_string_lossy().into_owned(),
+                name: "Importado".to_string(),
+                server_type: "paper".to_string(),
+                version: "26.2".to_string(),
+                ram_mb: 2048,
+                accept_eula: false,
+            },
+        )
+        .expect_err("debe pedir eula");
+        assert!(matches!(err, ServerError::EulaNotAccepted(_)));
+        assert!(!servers.join("Importado").exists());
+
+        // Aceptando: copia todo menos logs, firma eula, escribe sidecar.
+        let info = import_server_at(
+            &servers,
+            ImportInput {
+                path: src.to_string_lossy().into_owned(),
+                name: "Importado".to_string(),
+                server_type: "paper".to_string(),
+                version: "26.2".to_string(),
+                ram_mb: 1024,
+                accept_eula: true,
+            },
+        )
+        .expect("importar");
+        assert_eq!(info.name, "Importado");
+        let t = servers.join("Importado");
+        assert!(t.join("server.jar").is_file());
+        assert!(t.join("world").join("level.dat").is_file());
+        assert!(!t.join("logs").exists(), "los logs no se copian");
+        assert_eq!(std::fs::read_to_string(t.join("eula.txt")).unwrap(), "eula=true\n");
+        assert!(std::fs::read_to_string(t.join("server.properties")).unwrap().contains("motd=Viejo"));
+        let listed = list_servers_at(&servers).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].ram_mb, 1024);
+
+        // Sin server.jar no es importable.
+        let err = import_server_at(
+            &servers,
+            ImportInput {
+                path: tmp.to_string_lossy().into_owned(),
+                name: "Otro".to_string(),
+                server_type: "vanilla".to_string(),
+                version: "26.2".to_string(),
+                ram_mb: 2048,
+                accept_eula: true,
+            },
+        )
+        .expect_err("sin jar no importa");
+        assert!(matches!(err, ServerError::NotFound(_)));
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]

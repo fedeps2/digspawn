@@ -11,8 +11,12 @@
   <body>
     <header class="topbar">
       <h1>Digspawn</h1>
-      <button id="new-server-btn" type="button" data-tip="Crea un server nuevo paso a paso.">Nuevo server</button>
+      <div class="topbar-actions">
+        <button id="import-btn" type="button" data-tip="Trae un server que ya tenés en otra carpeta. Se copia a la biblioteca.">Importar</button>
+        <button id="new-server-btn" type="button" data-tip="Crea un server nuevo paso a paso.">Nuevo server</button>
+      </div>
     </header>
+    <div id="update-banner" hidden></div>
     <main id="view"></main>
     <div id="wizard-root"></div>
   </body>

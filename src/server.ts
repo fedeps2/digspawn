@@ -249,7 +249,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       <div class="props-grid">
         ${field("Puerto", "Por dónde se conectan tus amigos: TU_IP:puerto. Cambialo solo si el 25565 está ocupado.", num("pp-port", "server-port", `min="1" max="65535"`))}
         ${field("IP del server", "Para selfhost sin complicaciones, usá ZeroTier o Radmin VPN y pegá acá la IP que ellos te dan. Vacío = escucha en todas las interfaces.", `<input id="pp-ip" type="text" placeholder="(vacío = todas)" value="${esc(p["server-ip"] ?? "")}" ${dis ? "disabled" : ""} />`)}
-        ${(localIps ?? []).length > 0 ? `<p class="muted">Tus IPs para pasarle a tus amigos: ${(localIps ?? []).map(esc).join(" · ")}</p>` : ""}
+        ${(localIps ?? []).length > 0 ? `<p class="muted">Pasales a tus amigos así — IP:Puerto (con Radmin/ZeroTier, la IP es la que te da la VPN): ${(localIps ?? []).map((ip) => esc(`${ip}:${p["server-port"] ?? "25565"}`)).join(" · ")}</p>` : ""}
         ${sel("pp-online", "Online mode", "En true solo entran cuentas premium (originales). En false entra cualquiera, pero se puede usar cualquier nombre.", p["online-mode"] ?? "true", BOOLS, dis)}
         ${sel("pp-diff", "Dificultad", "Daño de monstruos, hambre y veneno: peaceful, easy, normal o hard.", p["difficulty"] ?? "normal", DIFFICULTIES, dis)}
         ${sel("pp-mode", "Gamemode", "Modo de juego al entrar: survival, creative, adventure o spectator.", p["gamemode"] ?? "survival", GAMEMODES, dis)}

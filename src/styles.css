@@ -783,7 +783,12 @@ input[type="range"] {
   border-bottom: none;
   border-radius: 0;
   padding: 0.9rem;
-  align-self: stretch;
+  /* Capa fija sobre el scroll: siempre visible, sin borde inferior. */
+  position: sticky;
+  top: 56px;
+  height: calc(100dvh - 56px);
+  overflow-y: auto;
+  align-self: start;
 }
 
 .sb-head {
@@ -800,7 +805,7 @@ input[type="range"] {
   opacity: 0.45;
 }
 
-.sidebar > button,
+.sidebar button,
 .sb-foot button {
   padding: 0.75em 1em;
   font-size: 1rem;

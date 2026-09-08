@@ -19,6 +19,15 @@ irte por otro lado (regla AGENTS 6).
 Cerrar en algo que el pana entenderia: **"eleji un plugin, se instalo, reinicie el
 server y quedo andando"**. Tres piernas:
 
+### 0. BASE YA EXISTENTE (reusar, NO reescribir)
+- Ya hay `src-tauri/src/plugins.rs`: `list_plugins`, `import_plugin` (copia un .jar
+  del disco), `delete_plugin`, `set_plugin_enabled` (.jar <-> .jar.disabled),
+  validacion de nombre, limite 50 MB y chequeo ZIP. Con tests.
+- Ya hay una pestana/gestión de plugins en el UI.
+- Este hito NO rehace la gestion de instalados: le SUMA el buscador + descarga
+  in-app via Modrinth (lo que falta para "el pana elige y se instala solo").
+  No dupliques list/import/delete/toggle: agregales search/install encima.
+
 ### 1. Backend (Rust, Tauri v2) — solo Modrinth API
 Reusa el patron de descarga+progreso que ya existe (Adoptium/Paper fill: reqwest +
 evento de progreso). Mandar User-Agent valido tipo `digspawn/<version>` (Modrinth

@@ -45,6 +45,24 @@ export interface DownloadProgress {
   pct: number | null;
 }
 
+export interface ServerStateEvent {
+  server: string;
+  state: string;
+}
+
+export interface LogLine {
+  server: string;
+  line: string;
+}
+
+export interface RuntimeProgress {
+  server: string;
+  version: number;
+  downloaded: number;
+  total: number | null;
+  pct: number | null;
+}
+
 /** Extrae el mensaje legible de un fallo de `invoke`. */
 export function errMsg(e: unknown): string {
   if (typeof e === "string") return e;
@@ -62,5 +80,11 @@ export const api = {
   deleteServer: (name: string) => invoke<void>("delete_server", { name }),
   detectJava: () => invoke<JavaInfo>("detect_java"),
   hostRamMb: () => invoke<number>("host_ram_mb"),
-  requiredJava: (mc_version: string) => invoke<number>("required_java", { mcVersion: mc_version }),
+  requiredJava: (server_type: ServerType, mc_version: string) =>
+    invoke<number>("required_java", { serverType: server_type, mcVersion: mc_version }),
+  startServer: (name: string) => invoke<void>("start_server", { name }),
+  stopServer: (name: string) => invoke<void>("stop_server", { name }),
+  restartServer: (name: string) => invoke<void>("restart_server", { name }),
+  sendCommand: (name: string, cmd: string) => invoke<void>("send_command", { name, cmd }),
+  readLog: (name: string, max_lines: number) => invoke<string[]>("read_log", { name, maxLines: max_lines }),
 };

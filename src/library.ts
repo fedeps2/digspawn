@@ -1,4 +1,5 @@
 // Biblioteca: grid de cards desde disco + borrar con confirmación.
+// Click → vista del server · doble click → arrancar y entrar a consola.
 
 import { api, errMsg, type ServerInfo } from "./api";
 
@@ -7,7 +8,13 @@ function badge(s: ServerInfo): string {
   return `${label} ${s.version}`;
 }
 
-export async function renderLibrary(view: HTMLElement, onNew: () => void): Promise<void> {
+export interface LibraryHooks {
+  onNew: () => void;
+  onOpen: (name: string) => void;
+  onQuickStart: (name: string) => void;
+}
+
+export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Promise<void> {
   view.innerHTML = `<p class="muted">Cargando servers…</p>`;
   let servers: ServerInfo[];
   try {
@@ -23,25 +30,30 @@ export async function renderLibrary(view: HTMLElement, onNew: () => void): Promi
         <p>No tenés ningún server todavía.</p>
         <button id="empty-new" type="button">Nuevo server</button>
       </div>`;
-    view.querySelector("#empty-new")?.addEventListener("click", onNew);
+    view.querySelector("#empty-new")?.addEventListener("click", hooks.onNew);
     return;
   }
 
   const cards = servers
     .map(
       (s) => `
-      <div class="card" data-name="${escapeHtml(s.name)}">
+      <div class="card" data-open="${escapeHtml(s.name)}" title="Abrir">
         <div class="card-icon">${s.type === "paper" ? "📄" : "🧱"}</div>
         <div class="card-body">
           <strong>${escapeHtml(s.name)}</strong>
           <span class="badge">${escapeHtml(badge(s))}</span>
-          <span class="state">parado · ${s.ram_mb} MB</span>
+          <span class="state">${s.state === "running" ? "🟢 corriendo" : "⚪ parado"} · ${s.ram_mb} MB</span>
         </div>
         <button class="card-del" data-del="${escapeHtml(s.name)}" type="button" title="Borrar">✕</button>
       </div>`,
     )
     .join("");
   view.innerHTML = `<div class="grid">${cards}</div>`;
+
+  view.querySelectorAll<HTMLElement>("[data-open]").forEach((card) => {
+    card.addEventListener("click", () => hooks.onOpen(card.dataset.open ?? ""));
+    card.addEventListener("dblclick", () => hooks.onQuickStart(card.dataset.open ?? ""));
+  });
 
   view.querySelectorAll<HTMLButtonElement>("[data-del]").forEach((btn) => {
     btn.addEventListener("click", async (ev) => {
@@ -54,7 +66,7 @@ export async function renderLibrary(view: HTMLElement, onNew: () => void): Promi
         window.alert(`No se pudo borrar: ${errMsg(e)}`);
         return;
       }
-      await renderLibrary(view, onNew);
+      await renderLibrary(view, hooks);
     });
   });
 }

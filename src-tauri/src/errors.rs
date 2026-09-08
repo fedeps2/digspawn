@@ -14,6 +14,8 @@ pub enum ServerError {
     DownloadFailed(String),
     VersionsFailed(String),
     JavaNotFound(String),
+    AlreadyRunning(String),
+    NotRunning(String),
     Io(String),
 }
 
@@ -29,6 +31,8 @@ impl std::fmt::Display for ServerError {
             ServerError::DownloadFailed(m) => ("DownloadFailed", m),
             ServerError::VersionsFailed(m) => ("VersionsFailed", m),
             ServerError::JavaNotFound(m) => ("JavaNotFound", m),
+            ServerError::AlreadyRunning(m) => ("AlreadyRunning", m),
+            ServerError::NotRunning(m) => ("NotRunning", m),
             ServerError::Io(m) => ("Io", m),
         };
         write!(f, "{kind}: {message}")

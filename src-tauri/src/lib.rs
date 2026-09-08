@@ -1,15 +1,17 @@
-// Comandos Tauri del backend (hito 2: biblioteca + creación).
-// Start/stop/consola = hito 3+.
+// Comandos Tauri del backend (hito 3: biblioteca + creación + procesos).
+// Comandos rápidos / props editables / update-check = hito 4.
 
 pub mod errors;
 pub mod java;
 pub mod mojang_api;
 pub mod paper_api;
+pub mod processes;
 pub mod properties;
+pub mod runtime;
 pub mod server_manager;
 
 use serde::Serialize;
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 
 use errors::{Result, ServerError};
 use server_manager::{CreateInput, ServerInfo};
@@ -24,8 +26,14 @@ pub struct VersionItem {
 }
 
 #[tauri::command]
-async fn list_servers(app: AppHandle) -> Result<Vec<ServerInfo>> {
-    server_manager::list_servers(&app)
+async fn list_servers(app: AppHandle, procs: State<'_, processes::ProcessState>) -> Result<Vec<ServerInfo>> {
+    let mut servers = server_manager::list_servers(&app)?;
+    for s in &mut servers {
+        if procs.is_running(&s.name) {
+            s.state = processes::STATE_RUNNING.to_string();
+        }
+    }
+    Ok(servers)
 }
 
 #[tauri::command]
@@ -59,7 +67,16 @@ async fn create_server(app: AppHandle, input: CreateInput) -> Result<ServerInfo>
 }
 
 #[tauri::command]
-async fn delete_server(app: AppHandle, name: String) -> Result<()> {
+async fn delete_server(
+    app: AppHandle,
+    procs: State<'_, processes::ProcessState>,
+    name: String,
+) -> Result<()> {
+    if procs.is_running(name.trim()) {
+        return Err(ServerError::AlreadyRunning(
+            "Frená el server antes de borrarlo.".to_string(),
+        ));
+    }
     server_manager::delete_server(&app, &name)
 }
 
@@ -74,13 +91,39 @@ fn host_ram_mb() -> Result<u64> {
 }
 
 #[tauri::command]
-fn required_java(mc_version: String) -> u32 {
-    java::required_java(&mc_version)
+async fn required_java(server_type: String, mc_version: String) -> u32 {
+    runtime::required_java_for(&server_type, &mc_version).await
+}
+
+#[tauri::command]
+async fn start_server(app: AppHandle, name: String) -> Result<()> {
+    processes::start_server(&app, &name).await
+}
+
+#[tauri::command]
+async fn stop_server(app: AppHandle, name: String) -> Result<()> {
+    processes::stop_server(&app, &name).await
+}
+
+#[tauri::command]
+async fn restart_server(app: AppHandle, name: String) -> Result<()> {
+    processes::restart_server(&app, &name).await
+}
+
+#[tauri::command]
+async fn send_command(app: AppHandle, name: String, cmd: String) -> Result<()> {
+    processes::send_command(&app, &name, &cmd).await
+}
+
+#[tauri::command]
+fn read_log(app: AppHandle, name: String, max_lines: u32) -> Result<Vec<String>> {
+    processes::read_log(&app, &name, max_lines)
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(processes::ProcessState::new())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             list_servers,
@@ -90,6 +133,11 @@ pub fn run() {
             detect_java,
             host_ram_mb,
             required_java,
+            start_server,
+            stop_server,
+            restart_server,
+            send_command,
+            read_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

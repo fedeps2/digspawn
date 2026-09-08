@@ -30,6 +30,14 @@ struct ManifestEntry {
 #[derive(Debug, Deserialize)]
 struct VersionJson {
     downloads: VersionJsonDownloads,
+    #[serde(rename = "javaVersion", default)]
+    java_version: Option<JavaVersion>,
+}
+
+#[derive(Debug, Deserialize)]
+struct JavaVersion {
+    #[serde(rename = "majorVersion", default)]
+    major_version: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,7 +91,7 @@ pub struct VanillaDownload {
     pub size: Option<u64>,
 }
 
-pub async fn server_jar_url(version: &str) -> Result<VanillaDownload> {
+async fn fetch_version_json(version: &str) -> Result<VersionJson> {
     let m = fetch_manifest().await?;
     let entry = m
         .versions
@@ -104,14 +112,25 @@ pub async fn server_jar_url(version: &str) -> Result<VanillaDownload> {
             resp.status()
         )));
     }
-    let vj: VersionJson = resp
-        .json()
+    resp.json()
         .await
-        .map_err(|e| ServerError::DownloadFailed(format!("Mojang: respuesta inválida: {e}")))?;
+        .map_err(|e| ServerError::DownloadFailed(format!("Mojang: respuesta inválida: {e}")))
+}
+
+pub async fn server_jar_url(version: &str) -> Result<VanillaDownload> {
+    let vj = fetch_version_json(version).await?;
     Ok(VanillaDownload {
         url: vj.downloads.server.url,
         size: vj.downloads.server.size,
     })
+}
+
+/// Java major que pide Mojang para una versión (si lo informa).
+pub async fn java_major(version: &str) -> Result<u32> {
+    let vj = fetch_version_json(version).await?;
+    vj.java_version
+        .and_then(|j| j.major_version)
+        .ok_or_else(|| ServerError::VersionsFailed(format!("Mojang: sin dato de Java para {version}")))
 }
 
 #[cfg(test)]

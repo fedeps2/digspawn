@@ -83,7 +83,7 @@ pub fn detect_java() -> Result<JavaInfo> {
         return Ok(info);
     }
     Err(ServerError::JavaNotFound(
-        "No se encontró Java en el sistema (JAVA_HOME ni PATH). El autoinstall llega en el hito 3.".to_string(),
+        "No se encontró Java en el sistema (JAVA_HOME ni PATH). Al arrancar, Digspawn descarga un runtime portable.".to_string(),
     ))
 }
 

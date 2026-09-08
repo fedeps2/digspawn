@@ -1,8 +1,10 @@
-// Digspawn — biblioteca + wizard (hito 2).
+// Digspawn — biblioteca + wizard + vista server (hito 3).
 
 import "./styles.css";
+import { api } from "./api";
 import { renderLibrary } from "./library";
 import { openWizard } from "./wizard";
+import { openServer } from "./server";
 
 const view = document.querySelector<HTMLElement>("#view");
 const wizardRoot = document.querySelector<HTMLElement>("#wizard-root");
@@ -13,8 +15,15 @@ if (!view || !wizardRoot || !newBtn) {
 }
 
 async function showLibrary(): Promise<void> {
-  await renderLibrary(view as HTMLElement, () => {
-    openWizard(wizardRoot as HTMLElement, () => void showLibrary());
+  const v = view as HTMLElement;
+  await renderLibrary(v, {
+    onNew: () => openWizard(wizardRoot as HTMLElement, () => void showLibrary()),
+    onOpen: (name) => void openServer(v, name, () => void showLibrary()),
+    onQuickStart: (name) => {
+      void api.startServer(name).catch(() => undefined).finally(() => {
+        void openServer(v, name, () => void showLibrary());
+      });
+    },
   });
 }
 

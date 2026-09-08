@@ -224,7 +224,7 @@ export function openWizard(root: HTMLElement, onDone: () => void): void {
       st.requiredJava = fromFill;
     } else if (st.version) {
       try {
-        st.requiredJava = await api.requiredJava(st.version);
+        st.requiredJava = await api.requiredJava(st.type, st.version);
       } catch {
         st.requiredJava = null;
       }

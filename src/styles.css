@@ -42,6 +42,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: clip;
   background: var(--bg);
   background-image: radial-gradient(
       1200px 600px at 20% -10%,
@@ -693,6 +694,14 @@ input[type="range"] {
   opacity: 1;
   visibility: visible;
   transition-delay: 0.5s;
+}
+
+/* Tooltips pegados al borde derecho (header/sidebar): alineados a la
+   derecha para no desbordar el viewport. */
+.topbar [data-tip]::after,
+.sidebar [data-tip]::after {
+  left: auto;
+  right: 0;
 }
 
 /* ---------- Consola ---------- */

@@ -62,13 +62,12 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
       : `<div class="grid">${servers
         .map(
           (s) => `
-        <div class="card ${selected === s.name ? "sel" : ""}" data-open="${escapeHtml(s.name)}" data-tip="Click para seleccionar, doble click para abrir.">
-          <div class="card-icon" data-icon="${escapeHtml(s.name)}">${s.type === "paper" ? "📄" : "🧱"}</div>
-          <div class="card-body">
-            <strong>${escapeHtml(s.name)}</strong>
-            <span class="badge">${escapeHtml(badge(s))}</span>
-            <span class="state"><span class="dot ${dotClass(s.state)}"></span>${stateLabel(s.state)} · ${s.ram_mb} MB</span>
-          </div>
+        <div class="tile ${selected === s.name ? "sel" : ""}" data-open="${escapeHtml(s.name)}" data-tip="Click para seleccionar, doble click para abrir.">
+          <div class="tile-icon" data-icon="${escapeHtml(s.name)}">${s.type === "paper" ? "📄" : "🧱"}</div>
+          <strong class="tile-name">${escapeHtml(s.name)}</strong>
+          <span class="badge">${escapeHtml(badge(s))}</span>
+          <span class="tile-meta">${s.ram_mb} MB</span>
+          <span class="state"><span class="dot ${dotClass(s.state)}"></span>${stateLabel(s.state)}</span>
         </div>`,
         )
         .join("")}</div>`;
@@ -136,6 +135,10 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
           ${armed ? `Mantené para borrar (${(armLeft / 1000).toFixed(1)}s)` : "Borrar"}
         </button>
         ${armed ? `<div class="hold-bar"><div class="hold-fill" style="width:0%"></div></div>` : ""}
+      </div>
+      <div class="sb-foot">
+        <button data-act="new" type="button">Nuevo</button>
+        <button data-act="import" type="button">Importar</button>
       </div>`;
   }
 
@@ -156,8 +159,12 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
   }
 
   function wireSidebar(): void {
-    view.querySelector('[data-act="new"]')?.addEventListener("click", hooks.onNew);
-    view.querySelector('[data-act="import"]')?.addEventListener("click", hooks.onImport);
+    view.querySelectorAll('[data-act="new"]').forEach((b) =>
+      b.addEventListener("click", hooks.onNew),
+    );
+    view.querySelectorAll('[data-act="import"]').forEach((b) =>
+      b.addEventListener("click", hooks.onImport),
+    );
     view.querySelector('[data-act="start"]')?.addEventListener("click", () => void doStart(false));
     view.querySelector('[data-act="force-start"]')?.addEventListener("click", () => void doStart(true));
     view.querySelector('[data-act="stop"]')?.addEventListener("click", () => void doStop());

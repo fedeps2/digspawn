@@ -196,9 +196,77 @@ a:hover {
 /* ---------- Cards / grid ---------- */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 0.9rem;
   align-content: start;
+}
+
+/* Tiles cuadrados de server (biblioteca). */
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.3rem;
+  aspect-ratio: 1 / 1;
+  justify-content: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.8rem 0.6rem;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background-color 0.16s ease,
+    transform 0.16s ease;
+  overflow: hidden;
+}
+
+.tile:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+
+.tile.sel {
+  border-color: var(--accent-border);
+  background: var(--surface-3);
+}
+
+.tile-icon {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.tile-icon img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 12px;
+  display: block;
+  background: var(--surface);
+}
+
+.tile-name {
+  font-weight: 600;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tile-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.sb-foot {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: auto;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.sb-foot button {
+  flex: 1;
 }
 
 .card {

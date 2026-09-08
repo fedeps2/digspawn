@@ -11,12 +11,10 @@ import { openSettings } from "./settings";
 
 const view = document.querySelector<HTMLElement>("#view");
 const wizardRoot = document.querySelector<HTMLElement>("#wizard-root");
-const newBtn = document.querySelector<HTMLButtonElement>("#new-server-btn");
-const importBtn = document.querySelector<HTMLButtonElement>("#import-btn");
 const settingsBtn = document.querySelector<HTMLButtonElement>("#settings-btn");
 const banner = document.querySelector<HTMLElement>("#update-banner");
 
-if (!view || !wizardRoot || !newBtn || !importBtn || !settingsBtn || !banner) {
+if (!view || !wizardRoot || !settingsBtn || !banner) {
   throw new Error("Falta el shell base (index.html).");
 }
 
@@ -31,14 +29,6 @@ async function showLibrary(): Promise<void> {
     },
   });
 }
-
-newBtn.addEventListener("click", () => {
-  openWizard(wizardRoot as HTMLElement, () => void showLibrary());
-});
-
-importBtn.addEventListener("click", () => {
-  openImport(wizardRoot as HTMLElement, () => void showLibrary());
-});
 
 settingsBtn.addEventListener("click", () => {
   unmountLibrary();

@@ -848,6 +848,7 @@ dependencies = [
 name = "digspawn"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "flate2",
  "futures-util",
  "reqwest 0.12.28",

@@ -41,7 +41,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   let state: string = info.state;
   let ramMb: number = info.ram_mb;
   let busy = false;
-  let tab: "consola" | "ajustes" | "historial" = "consola";
+  let tab: "consola" | "ajustes" | "historial" | "comandos" | "jugadores" = "consola";
   let props: Record<string, string> | null = null;
   let propsError: string | null = null;
   let propsMsg: string | null = null;
@@ -70,6 +70,8 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     <div id="sv-java" class="muted" hidden></div>
     <div class="tabs">
       <button id="tab-consola" type="button" data-tip="Lo que el server está diciendo en vivo, y caja para mandarle comandos.">Consola</button>
+      <button id="tab-jugadores" type="button" data-tip="Quién está conectado ahora (se detecta del log).">Jugadores</button>
+      <button id="tab-comandos" type="button" data-tip="Atajos para los comandos más usados, sin escribirlos a mano.">Comandos</button>
       <button id="tab-ajustes" type="button" data-tip="Configuración del server. Solo se edita frenado; aplica al arrancar.">Ajustes</button>
       <button id="tab-historial" type="button" data-tip="Logs guardados: el último log, rotados viejos y crashlogs.">Historial</button>
     </div>
@@ -86,6 +88,10 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   const tabConsola = view.querySelector<HTMLButtonElement>("#tab-consola")!;
   const tabAjustes = view.querySelector<HTMLButtonElement>("#tab-ajustes")!;
   const tabHistorial = view.querySelector<HTMLButtonElement>("#tab-historial")!;
+  const tabComandos = view.querySelector<HTMLButtonElement>("#tab-comandos")!;
+  const tabJugadores = view.querySelector<HTMLButtonElement>("#tab-jugadores")!;
+  const players = new Map<string, number>(); // nombre -> timestamp de join
+  let pendingEcho: string[] = [];
 
   const running = () => state === "running" || state === "starting" || state === "stopping";
 
@@ -102,9 +108,13 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     tabConsola.classList.toggle("sel", tab === "consola");
     tabAjustes.classList.toggle("sel", tab === "ajustes");
     tabHistorial.classList.toggle("sel", tab === "historial");
+    tabComandos.classList.toggle("sel", tab === "comandos");
+    tabJugadores.classList.toggle("sel", tab === "jugadores");
     if (tab === "consola") renderConsola();
     else if (tab === "ajustes") void renderAjustes();
-    else void renderHistorial();
+    else if (tab === "historial") void renderHistorial();
+    else if (tab === "comandos") renderComandos();
+    else renderJugadores();
   }
 
   function say(msg: string, isErr: boolean): void {
@@ -149,10 +159,18 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   async function loadHistory(): Promise<void> {
     try {
       const hist = await api.readLog(name, 200);
-      hist.forEach(appendLine);
+      hist.forEach((l) => {
+        appendLine(l);
+        trackPlayers(l);
+      });
       if (hist.length > 0) appendLine("——— fin del historial ———");
     } catch {
       // Sin historial: no es error.
+    }
+    // Ecos de atajos mandados desde la pestaña Comandos.
+    if (pendingEcho.length > 0) {
+      pendingEcho.forEach(appendLine);
+      pendingEcho = [];
     }
   }
 
@@ -216,6 +234,11 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
           <input id="pp-ram" type="range" min="512" max="${hostMaxRam}" step="256" value="${Math.min(ramMb, hostMaxRam)}" ${dis ? "disabled" : ""} />`)}
       </div>
       <button id="pp-save" type="button" data-tip="Guarda todo. Aplica la próxima vez que arranques." ${dis ? "disabled" : ""}>Guardar</button>
+      <div class="icon-row" data-tip="Imagen de la card en la biblioteca. Tiene que ser PNG de hasta 1 MB.">
+        <strong>Icono</strong>
+        <img id="pp-icon-prev" alt="icono actual" hidden />
+        <label> Elegir PNG… <input id="pp-icon" type="file" accept="image/png,.png" hidden /></label>
+      </div>
       ${propsMsg ? `<p class="muted">${esc(propsMsg)}</p>` : ""}`;
     const ramInput = tabBody.querySelector<HTMLInputElement>("#pp-ram");
     ramInput?.addEventListener("input", () => {
@@ -223,6 +246,31 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       if (lbl && ramInput) lbl.textContent = `${ramInput.value} MB`;
     });
     tabBody.querySelector("#pp-save")?.addEventListener("click", () => void saveProps());
+    // Icono actual + subida.
+    api.getIcon(name).then((url) => {
+      const prev = tabBody.querySelector<HTMLImageElement>("#pp-icon-prev");
+      if (prev && url) {
+        prev.src = url;
+        prev.hidden = false;
+      }
+    }).catch(() => undefined);
+    tabBody.querySelector<HTMLInputElement>("#pp-icon")?.addEventListener("change", (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const url = String(reader.result ?? "");
+        api.setIcon(name, url).then(() => {
+          const prev = tabBody.querySelector<HTMLImageElement>("#pp-icon-prev");
+          if (prev) {
+            prev.src = url;
+            prev.hidden = false;
+          }
+          say("Icono actualizado.", false);
+        }).catch((err: unknown) => say(`Icono: ${errMsg(err)}`, true));
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   function val(id: string): string {
@@ -336,6 +384,95 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     }
   }
 
+  // ---- Jugadores (parse join/leave del log) ----
+  const JOIN_RE = /([A-Za-z0-9_]{3,16}) (joined|left) the game/;
+
+  function trackPlayers(line: string): void {
+    const m = JOIN_RE.exec(line);
+    if (!m) return;
+    if (m[2] === "joined") players.set(m[1], Date.now());
+    else players.delete(m[1]);
+    if (tab === "jugadores") renderJugadores();
+  }
+
+  function renderJugadores(): void {
+    const list = [...players.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    tabBody.innerHTML = `
+      <p class="muted" data-tip="Se detecta del log: si el server se reinició, la lista arranca vacía.">${list.length} conectado${list.length === 1 ? "" : "s"}</p>
+      ${list.length === 0
+        ? `<p class="muted">Nadie por ahora. Cuando alguien entre, aparece acá.</p>`
+        : `<div class="players">${list
+            .map(
+              ([n, since]) =>
+                `<div class="card"><div class="card-icon">⛏️</div><div class="card-body"><strong>${esc(n)}</strong><span class="state">en línea desde ${new Date(since).toLocaleTimeString()}</span></div></div>`,
+            )
+            .join("")}</div>`}`;
+  }
+
+  // ---- Comandos rápidos (SPEC) ----
+  function cmdVal(id: string): string {
+    return tabBody.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`)?.value.trim() ?? "";
+  }
+
+  function quickRow(label: string, tip: string, inner: string): string {
+    return `<div class="quick-row" data-tip="${tip}"><strong>${label}</strong><div class="quick-inputs">${inner}</div><button data-quick="${label}" type="button">Enviar</button></div>`;
+  }
+
+  function renderComandos(): void {
+    const dis = state !== "running";
+    tabBody.innerHTML = `
+      ${dis ? `<p class="muted">Arrancá el server para usar los atajos.</p>` : ""}
+      <div class="quicks">
+        ${quickRow("say", "Manda un mensaje a todos los conectados.", `<input id="q-say" placeholder="Mensaje" ${dis ? "disabled" : ""} />`)}
+        ${quickRow("op", "Le da operador (admin) a un jugador.", `<input id="q-op" placeholder="Jugador" ${dis ? "disabled" : ""} />`)}
+        ${quickRow("give", "Le da un item a un jugador. Ej: diamond_sword 1.", `<input id="q-give-p" placeholder="Jugador" ${dis ? "disabled" : ""} /><input id="q-give-i" placeholder="Item" ${dis ? "disabled" : ""} /><input id="q-give-c" placeholder="Cant." ${dis ? "disabled" : ""} />`)}
+        ${quickRow("time set", "Cambia la hora del mundo.", `<select id="q-time" ${dis ? "disabled" : ""}><option value="day">day</option><option value="noon">noon</option><option value="night">night</option><option value="midnight">midnight</option></select><input id="q-time-n" placeholder="o ticks" ${dis ? "disabled" : ""} />`)}
+        ${quickRow("gamemode", "Cambia el modo de juego de alguien.", `<select id="q-gm-m" ${dis ? "disabled" : ""}><option>survival</option><option>creative</option><option>adventure</option><option>spectator</option></select><input id="q-gm-p" placeholder="Jugador" ${dis ? "disabled" : ""} />`)}
+        ${quickRow("whitelist add", "Agrega a alguien a la lista blanca.", `<input id="q-wl" placeholder="Jugador" ${dis ? "disabled" : ""} />`)}
+      </div>`;
+    const builders: Record<string, () => string | null> = {
+      say: () => {
+        const t = cmdVal("q-say");
+        return t ? `say ${t}` : null;
+      },
+      op: () => {
+        const t = cmdVal("q-op");
+        return t ? `op ${t}` : null;
+      },
+      give: () => {
+        const p = cmdVal("q-give-p");
+        const i = cmdVal("q-give-i");
+        const c = cmdVal("q-give-c");
+        return p && i ? `give ${p} ${i}${c ? ` ${c}` : ""}` : null;
+      },
+      "time set": () => {
+        const n = cmdVal("q-time-n");
+        return n ? `time set ${n}` : `time set ${cmdVal("q-time")}`;
+      },
+      gamemode: () => {
+        const p = cmdVal("q-gm-p");
+        return p ? `gamemode ${cmdVal("q-gm-m")} ${p}` : null;
+      },
+      "whitelist add": () => {
+        const t = cmdVal("q-wl");
+        return t ? `whitelist add ${t}` : null;
+      },
+    };
+    tabBody.querySelectorAll<HTMLButtonElement>("[data-quick]").forEach((b) => {
+      b.addEventListener("click", () => {
+        if (state !== "running") return;
+        const cmd = builders[b.dataset.quick ?? ""]?.();
+        if (!cmd) {
+          say("Completá los campos del atajo.", true);
+          return;
+        }
+        api.sendCommand(name, cmd).catch((err: unknown) => say(errMsg(err), true));
+        pendingEcho.push(`> ${cmd}`);
+        say(`Enviado: ${cmd}`, false);
+      });
+    });
+  }
+
   // ---- Stats en vivo ----
   async function pollStats(): Promise<void> {
     try {
@@ -354,7 +491,9 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   // ---- Eventos ----
   unlistens.push(
     await listen<LogLine>("log-line", (ev) => {
-      if (ev.payload.server === name && tab === "consola") appendLine(ev.payload.line);
+      if (ev.payload.server !== name) return;
+      trackPlayers(ev.payload.line);
+      if (tab === "consola") appendLine(ev.payload.line);
     }),
     await listen<ServerStateEvent>("server-state", (ev) => {
       if (ev.payload.server !== name) return;
@@ -425,6 +564,14 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   });
   tabAjustes.addEventListener("click", () => {
     tab = "ajustes";
+    paint();
+  });
+  tabComandos.addEventListener("click", () => {
+    tab = "comandos";
+    paint();
+  });
+  tabJugadores.addEventListener("click", () => {
+    tab = "jugadores";
     paint();
   });
   tabHistorial.addEventListener("click", () => {

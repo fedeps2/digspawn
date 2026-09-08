@@ -159,6 +159,16 @@ fn read_log_file(app: AppHandle, name: String, file: String, max_lines: u32) -> 
     processes::read_log_file(&app, &name, &file, max_lines)
 }
 
+#[tauri::command]
+fn set_icon(app: AppHandle, name: String, data_url: String) -> Result<()> {
+    server_manager::set_icon(&app, &name, &data_url)
+}
+
+#[tauri::command]
+fn get_icon(app: AppHandle, name: String) -> Result<Option<String>> {
+    server_manager::get_icon(&app, &name)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -184,6 +194,8 @@ pub fn run() {
             preflight,
             list_log_files,
             read_log_file,
+            set_icon,
+            get_icon,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

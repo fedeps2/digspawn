@@ -145,6 +145,71 @@ pub fn host_ram_mb() -> Result<u64> {
     Ok(mb)
 }
 
+// ---------------------------------------------------------------------------
+// Icono custom (icon.png del layout del SPEC).
+// ---------------------------------------------------------------------------
+
+const PNG_MAGIC: &[u8] = &[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+const MAX_ICON_BYTES: usize = 1024 * 1024;
+
+/// Valida y guarda el icon.png de un server. `data_url` es lo que da el
+/// `<input type=file>` del frontend ("data:image/png;base64,...").
+pub fn set_icon_at(dir: &std::path::Path, data_url: &str) -> Result<()> {
+    let b64 = data_url
+        .split_once(',')
+        .map(|(_, b)| b)
+        .unwrap_or(data_url);
+    if !data_url.starts_with("data:image/png") && !looks_like_base64(b64) {
+        return Err(ServerError::InvalidName("El icono tiene que ser un PNG.".to_string()));
+    }
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(b64.trim())
+        .map_err(|_| ServerError::InvalidName("El icono no es un PNG válido.".to_string()))?;
+    if bytes.len() > MAX_ICON_BYTES {
+        return Err(ServerError::InvalidName("El icono no puede superar 1 MB.".to_string()));
+    }
+    if bytes.len() < PNG_MAGIC.len() || &bytes[..PNG_MAGIC.len()] != PNG_MAGIC {
+        return Err(ServerError::InvalidName("El icono tiene que ser un PNG.".to_string()));
+    }
+    std::fs::write(dir.join("icon.png"), bytes)?;
+    Ok(())
+}
+
+fn looks_like_base64(s: &str) -> bool {
+    let s = s.trim();
+    !s.is_empty()
+        && s.len() % 4 == 0
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '/' | '='))
+}
+
+/// Devuelve el icon.png como data URL, o None si usa el default.
+pub fn get_icon_at(dir: &std::path::Path) -> Option<String> {
+    let bytes = std::fs::read(dir.join("icon.png")).ok()?;
+    if bytes.len() < PNG_MAGIC.len() || &bytes[..PNG_MAGIC.len()] != PNG_MAGIC {
+        return None;
+    }
+    use base64::Engine;
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    ))
+}
+
+pub fn set_icon(app: &AppHandle, name: &str, data_url: &str) -> Result<()> {
+    let clean = validate_name(name)?;
+    let target = servers_dir(app)?.join(&clean);
+    if !target.is_dir() {
+        return Err(ServerError::NotFound(format!("No existe el server \"{clean}\".")));
+    }
+    set_icon_at(&target, data_url)
+}
+
+pub fn get_icon(app: &AppHandle, name: &str) -> Result<Option<String>> {
+    let clean = validate_name(name)?;
+    Ok(get_icon_at(&servers_dir(app)?.join(&clean)))
+}
+
 async fn download_to(
     url: &str,
     server: &str,
@@ -288,6 +353,38 @@ pub async fn create_server(app: &AppHandle, input: CreateInput) -> Result<Server
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tiny_png_data_url() -> String {
+        // PNG de 1x1 (válido): magic + IHDR mínimo.
+        let mut bytes = PNG_MAGIC.to_vec();
+        bytes.extend_from_slice(&[0, 0, 0, 13, 73, 72, 68, 82]);
+        use base64::Engine;
+        format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(&bytes)
+        )
+    }
+
+    #[test]
+    fn icon_roundtrip_and_rejections() {
+        let tmp = std::env::temp_dir().join("digspawn-test-icon");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        assert!(get_icon_at(&tmp).is_none());
+        set_icon_at(&tmp, &tiny_png_data_url()).unwrap();
+        let back = get_icon_at(&tmp).expect("debe volver como data URL");
+        assert!(back.starts_with("data:image/png;base64,"));
+        assert!(set_icon_at(&tmp, "data:image/png;base64,!!!no-base64!!!").is_err());
+        assert!(set_icon_at(&tmp, "hola").is_err());
+        // JPEG con prefijo png: falla por magic.
+        use base64::Engine;
+        let fake_jpg = format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(b"\xFF\xD8\xFF not png")
+        );
+        assert!(set_icon_at(&tmp, &fake_jpg).is_err());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
 
     #[test]
     fn accepts_sane_names() {

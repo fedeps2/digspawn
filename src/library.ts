@@ -50,6 +50,16 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
     .join("");
   view.innerHTML = `<div class="grid">${cards}</div>`;
 
+  // Iconos custom (best-effort, en paralelo).
+  void Promise.all(
+    servers.map(async (s) => {
+      const url = await api.getIcon(s.name).catch(() => null);
+      if (!url) return;
+      const icon = view.querySelector(`[data-open="${CSS.escape(s.name)}"] .card-icon`);
+      if (icon) icon.innerHTML = `<img src="${url}" alt="icono" />`;
+    }),
+  );
+
   view.querySelectorAll<HTMLElement>("[data-open]").forEach((card) => {
     card.addEventListener("click", () => hooks.onOpen(card.dataset.open ?? ""));
     card.addEventListener("dblclick", () => hooks.onQuickStart(card.dataset.open ?? ""));

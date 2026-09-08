@@ -568,7 +568,7 @@ input[type="range"] {
   accent-color: var(--accent);
 }
 
-/* ---------- Vista server / tabs ---------- */
+/* ---------- Vista server / header ---------- */
 .sv-head {
   display: flex;
   align-items: center;
@@ -580,11 +580,100 @@ input[type="range"] {
   font-size: 1.25rem;
   font-weight: 650;
 }
+
+/* Avatar: icon.png o placeholder con la inicial (reutilizable). */
+.avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+}
+
+.avatar-ph {
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.tile-icon .avatar {
+  width: 64px;
+  height: 64px;
+}
+
+.tile-icon img.avatar {
+  border-radius: 12px;
+}
+
+.sv-top {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 0.5rem 0 0.25rem;
+}
+
+.sv-id {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.sv-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.sv-name-row h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+.sv-id .muted {
+  margin: 0;
+  font-size: 0.88rem;
+}
+
+.sv-top .sv-actions {
+  margin-left: auto;
+  margin-bottom: 0;
+}
+
 .sv-actions {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 0.5rem;
   flex-wrap: wrap;
+}
+
+button.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.modal {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-3);
+  width: min(460px, 92vw);
+  padding: 1.35rem 1.5rem;
+}
+
+.modal h3 {
+  margin: 0 0 0.5rem;
+}
+
+.modal p {
+  color: var(--muted);
 }
 
 .tabs {

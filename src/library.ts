@@ -4,6 +4,7 @@
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { api, errMsg, type ServerInfo, type ServerStateEvent } from "./api";
+import { placeholderHtml } from "./avatar";
 import type { ServerTab } from "./server";
 
 function badge(s: ServerInfo): string {
@@ -63,7 +64,7 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
         .map(
           (s) => `
         <div class="tile ${selected === s.name ? "sel" : ""}" data-open="${escapeHtml(s.name)}" data-tip="Click para seleccionar, doble click para abrir.">
-          <div class="tile-icon" data-icon="${escapeHtml(s.name)}">${s.type === "paper" ? "📄" : "🧱"}</div>
+          <div class="tile-icon" data-icon="${escapeHtml(s.name)}">${placeholderHtml(s.name)}</div>
           <strong class="tile-name">${escapeHtml(s.name)}</strong>
           <span class="badge">${escapeHtml(badge(s))}</span>
           <span class="tile-meta">${s.ram_mb} MB</span>
@@ -239,7 +240,7 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
         }
         if (!url) return;
         const icon = view.querySelector(`[data-icon="${CSS.escape(s.name)}"]`);
-        if (icon) icon.innerHTML = `<img src="${url}" alt="icono" />`;
+        if (icon) icon.innerHTML = `<img class="avatar" src="${url}" alt="" />`;
       }),
     );
   }

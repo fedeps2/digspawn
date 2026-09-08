@@ -381,6 +381,29 @@ pub async fn restart_server(app: &AppHandle, name: &str) -> Result<()> {
     }
 }
 
+/// Apagado forzado (kill inmediato, último recurso: puede dañar guardados).
+/// Quien saca la entrada del mapa evita el doble-emit con el vigilante.
+pub async fn force_stop(app: &AppHandle, name: &str) -> Result<()> {
+    let clean = server_manager::validate_name(name)?;
+    let procs = app.state::<ProcessState>();
+    let child = {
+        let running = procs.running.lock().expect("lock");
+        running
+            .get(&clean)
+            .map(|r| r.child.clone())
+            .ok_or_else(|| ServerError::NotRunning(format!("\"{clean}\" no está corriendo.")))?
+    };
+    // Best-effort: si ya murió, igual se limpia abajo.
+    let _ = child.lock().await.start_kill();
+    let mut running = procs.running.lock().expect("lock");
+    if running.remove(&clean).is_some() {
+        drop(running);
+        emit_line(app, &clean, "Apagado FORZADO por el usuario (puede haber saves dañados).");
+        emit_state(app, &clean, STATE_STOPPED);
+    }
+    Ok(())
+}
+
 /// Envía un comando/linea a stdin (una sola línea).
 pub async fn send_command(app: &AppHandle, name: &str, cmd: &str) -> Result<()> {
     let clean = server_manager::validate_name(name)?;

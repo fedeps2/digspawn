@@ -12,6 +12,7 @@ import {
   type ServerInfo,
   type ServerStateEvent,
 } from "./api";
+import { avatarHtml, placeholderHtml } from "./avatar";
 
 const MAX_LINES = 2000;
 
@@ -64,16 +65,21 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
 
   view.innerHTML = `
     <button id="sv-back" type="button">← Biblioteca</button>
-    <div class="sv-head">
-      <h2>${esc(info.name)}</h2>
-      <span id="sv-state" class="badge"></span>
+    <div class="sv-top">
+      <div id="sv-avatar"></div>
+      <div class="sv-id">
+        <div class="sv-name-row">
+          <h2>${esc(info.name)}</h2>
+          <span id="sv-state" class="badge"></span>
+        </div>
+        <p id="sv-usage" class="muted"></p>
+      </div>
+      <div class="sv-actions">
+        <button id="sv-toggle" type="button">▶ Iniciar</button>
+        <button id="sv-restart" type="button" data-tip="Apaga y vuelve a prender. Sirve para aplicar cambios de Ajustes.">↻ Reiniciar</button>
+      </div>
     </div>
-    <p id="sv-stats" class="muted"></p>
-    <div class="sv-actions">
-      <button id="sv-start" type="button" data-tip="Arranca el server. Si falta el Java que necesita, lo descarga solo la primera vez.">Iniciar</button>
-      <button id="sv-stop" type="button" data-tip="Apaga el server avisándole antes, así guarda el mundo.">Frenar</button>
-      <button id="sv-restart" type="button" data-tip="Apaga y vuelve a prender. Sirve para aplicar cambios de Ajustes.">Reiniciar</button>
-    </div>
+    <div id="sv-memwarn" class="warn-box" hidden></div>
     <p id="sv-msg" class="muted"></p>
     <div id="sv-java" class="muted" hidden></div>
     <div class="tabs">
@@ -84,15 +90,19 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       <button id="tab-ajustes" type="button" data-tip="Configuración del server. Solo se edita frenado; aplica al arrancar.">Ajustes</button>
       <button id="tab-historial" type="button" data-tip="Logs guardados: el último log, rotados viejos y crashlogs.">Historial</button>
     </div>
-    <div id="sv-tab-body"></div>`;
+    <div id="sv-tab-body"></div>
+    <div id="sv-modal-root"></div>`;
 
   const msgEl = view.querySelector<HTMLElement>("#sv-msg")!;
   const javaEl = view.querySelector<HTMLElement>("#sv-java")!;
   const stateEl = view.querySelector<HTMLElement>("#sv-state")!;
-  const statsEl = view.querySelector<HTMLElement>("#sv-stats")!;
-  const startBtn = view.querySelector<HTMLButtonElement>("#sv-start")!;
-  const stopBtn = view.querySelector<HTMLButtonElement>("#sv-stop")!;
+  const usageEl = view.querySelector<HTMLElement>("#sv-usage")!;
+  const memwarnEl = view.querySelector<HTMLElement>("#sv-memwarn")!;
+  const avatarEl = view.querySelector<HTMLElement>("#sv-avatar")!;
+  const toggleBtn = view.querySelector<HTMLButtonElement>("#sv-toggle")!;
   const restartBtn = view.querySelector<HTMLButtonElement>("#sv-restart")!;
+  const modalRoot = view.querySelector<HTMLElement>("#sv-modal-root")!;
+  let stopRequested = false;
   const tabBody = view.querySelector<HTMLElement>("#sv-tab-body")!;
   const tabConsola = view.querySelector<HTMLButtonElement>("#tab-consola")!;
   const tabAjustes = view.querySelector<HTMLButtonElement>("#tab-ajustes")!;
@@ -120,9 +130,13 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       state === "stopping" ? "frenando…" :
       state === "crashed" ? "crasheó" : "parado";
     stateEl.innerHTML = `<span class="dot ${dotCls}"></span> ${label}`;
-    startBtn.disabled = busy || running();
-    stopBtn.disabled = busy || !running();
-    restartBtn.disabled = busy || !running();
+    const on = state === "running" || state === "starting" || state === "stopping";
+    toggleBtn.disabled = busy;
+    toggleBtn.textContent = on ? "⏸ Frenar" : "▶ Iniciar";
+    toggleBtn.dataset.tip = on
+      ? "Apaga el server avisándole antes, así guarda el mundo. Dos veces seguidas = forzar."
+      : "Arranca el server. Si falta el Java que necesita, lo descarga solo la primera vez.";
+    restartBtn.disabled = busy || !on;
     tabConsola.classList.toggle("sel", tab === "consola");
     tabAjustes.classList.toggle("sel", tab === "ajustes");
     tabHistorial.classList.toggle("sel", tab === "historial");
@@ -709,16 +723,33 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     if (lastErr) say(lastErr, true);
   }
 
-  // ---- Stats en vivo ----
+  // ---- Stats en vivo (solo DEL server) + aviso de memoria de la PC ----
+  function fmtGB(mb: number): string {
+    return `${(mb / 1024).toFixed(1)} GB`;
+  }
+
   async function pollStats(): Promise<void> {
     try {
       const st = await api.serverStats();
       const mine = st.servers.find((s) => s.name === name);
-      const mineTxt = mine
-        ? ` · este server: ${mine.ram_mb} MB, ${mine.cpu_pct.toFixed(0)}% CPU`
-        : "";
-      statsEl.textContent =
-        `🖥 host: ${st.host.used_mb}/${st.host.total_mb} MB · CPU ${st.host.cpu_pct.toFixed(0)}%${mineTxt}`;
+      if (mine) {
+        usageEl.textContent =
+          `CPU ${mine.cpu_pct.toFixed(0)}% · RAM ${mine.ram_mb} MB de ${ramMb} MB máx`;
+      } else {
+        usageEl.textContent = `${ramMb} MB asignados · parado`;
+      }
+      // Aviso PC: usado + máximo del server > 75% del total.
+      const total = st.host.total_mb;
+      const projected = st.host.used_mb + ramMb;
+      if (total > 0 && projected / total > 0.75) {
+        memwarnEl.hidden = false;
+        memwarnEl.innerHTML =
+          `<p>⚠️ Ojo: con este server prendido usarías ~${fmtGB(projected)} de ${fmtGB(total)} ` +
+          `(${((projected / total) * 100).toFixed(0)}% de tu PC). Puede trabarte todo.</p>`;
+      } else {
+        memwarnEl.hidden = true;
+        memwarnEl.innerHTML = "";
+      }
     } catch {
       // Poll best-effort: no rompe la vista.
     }
@@ -738,13 +769,16 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       if (state === "running") {
         say("Corriendo.", false);
         javaEl.hidden = true;
+        stopRequested = false;
       } else if (state === "crashed") {
         say("El server crasheó. Mirá el final del log.", true);
+        stopRequested = false;
         histFiles = null; // hay crashlog nuevo para ver en Historial
         histSel = null;
         histLines = [];
       } else if (state === "stopped") {
         say("Parado.", false);
+        stopRequested = false;
       }
       if (tab === "ajustes") {
         props = null; // recargar (los controles se habilitan/deshabilitan)
@@ -801,8 +835,47 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     await run(() => api.startServer(name), "Arrancando…");
   }
 
-  startBtn.addEventListener("click", () => void startWithPreflight());
-  stopBtn.addEventListener("click", () => void run(() => api.stopServer(name), "Frenando…"));
+  async function onToggle(): Promise<void> {
+    if (busy) return;
+    if (state === "running" || state === "starting" || state === "stopping") {
+      if (stopRequested) {
+        openForceModal();
+        return;
+      }
+      stopRequested = true;
+      await run(() => api.stopServer(name), "Frenando… (otra vez = forzar)");
+    } else {
+      await startWithPreflight();
+    }
+  }
+
+  function openForceModal(): void {
+    modalRoot.innerHTML = `
+      <div class="overlay">
+        <div class="modal">
+          <h3>¿Forzar el apagado?</h3>
+          <p>Esto mata el proceso en seco, <strong>sin guardar</strong>. Puede dañar
+          guardados o el mundo. Usalo como último recurso, si el frenado normal
+          no responde.</p>
+          <div class="row" style="gap:.5rem;justify-content:flex-end">
+            <button id="sv-force-cancel" type="button">Cancelar</button>
+            <button id="sv-force-go" type="button" class="danger">Forzar apagado</button>
+          </div>
+        </div>
+      </div>`;
+    modalRoot.querySelector("#sv-force-cancel")?.addEventListener("click", closeForceModal);
+    modalRoot.querySelector("#sv-force-go")?.addEventListener("click", async () => {
+      closeForceModal();
+      stopRequested = false;
+      await run(() => api.forceStop(name), "Forzando apagado…");
+    });
+  }
+
+  function closeForceModal(): void {
+    modalRoot.innerHTML = "";
+  }
+
+  toggleBtn.addEventListener("click", () => void onToggle());
   restartBtn.addEventListener("click", () => void run(() => api.restartServer(name), "Reiniciando…"));
 
   tabConsola.addEventListener("click", () => {
@@ -863,4 +936,10 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   paint();
   pollTimer = window.setInterval(() => void pollStats(), 2000);
   void pollStats();
+
+  // Avatar: custom o placeholder con la inicial.
+  avatarEl.innerHTML = placeholderHtml(info.name);
+  api.getIcon(name).then((url) => {
+    avatarEl.innerHTML = avatarHtml(name, url);
+  }).catch(() => undefined);
 }

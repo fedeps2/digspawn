@@ -110,6 +110,11 @@ async fn stop_server(app: AppHandle, name: String) -> Result<()> {
 }
 
 #[tauri::command]
+async fn force_stop(app: AppHandle, name: String) -> Result<()> {
+    processes::force_stop(&app, &name).await
+}
+
+#[tauri::command]
 async fn restart_server(app: AppHandle, name: String) -> Result<()> {
     processes::restart_server(&app, &name).await
 }
@@ -275,6 +280,7 @@ pub fn run() {
             required_java,
             start_server,
             stop_server,
+            force_stop,
             restart_server,
             send_command,
             read_log,

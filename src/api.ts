@@ -171,6 +171,7 @@ export const api = {
     invoke<number>("required_java", { serverType: server_type, mcVersion: mc_version }),
   startServer: (name: string) => invoke<void>("start_server", { name }),
   stopServer: (name: string) => invoke<void>("stop_server", { name }),
+  forceStop: (name: string) => invoke<void>("force_stop", { name }),
   restartServer: (name: string) => invoke<void>("restart_server", { name }),
   sendCommand: (name: string, cmd: string) => invoke<void>("send_command", { name, cmd }),
   readLog: (name: string, max_lines: number) => invoke<string[]>("read_log", { name, maxLines: max_lines }),

@@ -46,6 +46,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   let propsError: string | null = null;
   let propsMsg: string | null = null;
   let hostMaxRam = 8192;
+  let localIps: string[] | null = null;
   let iconUrl: string | null | undefined = undefined; // undefined = aún no pedido
   let historyLoaded = false;
   let histFiles: import("./api").LogFile[] | null = null;
@@ -230,6 +231,11 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       } catch {
         hostMaxRam = 8192;
       }
+      try {
+        localIps = await api.localIps();
+      } catch {
+        localIps = [];
+      }
     }
     if (propsError !== null) {
       tabBody.innerHTML = `<p class="error">${esc(propsError)}</p>`;
@@ -242,6 +248,8 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       ${dis ? `<p class="muted">Frená el server para editar (aplica al arrancar).</p>` : ""}
       <div class="props-grid">
         ${field("Puerto", "Por dónde se conectan tus amigos: TU_IP:puerto. Cambialo solo si el 25565 está ocupado.", num("pp-port", "server-port", `min="1" max="65535"`))}
+        ${field("IP del server", "Para selfhost sin complicaciones, usá ZeroTier o Radmin VPN y pegá acá la IP que ellos te dan. Vacío = escucha en todas las interfaces.", `<input id="pp-ip" type="text" placeholder="(vacío = todas)" value="${esc(p["server-ip"] ?? "")}" ${dis ? "disabled" : ""} />`)}
+        ${(localIps ?? []).length > 0 ? `<p class="muted">Tus IPs para pasarle a tus amigos: ${(localIps ?? []).map(esc).join(" · ")}</p>` : ""}
         ${sel("pp-online", "Online mode", "En true solo entran cuentas premium (originales). En false entra cualquiera, pero se puede usar cualquier nombre.", p["online-mode"] ?? "true", BOOLS, dis)}
         ${sel("pp-diff", "Dificultad", "Daño de monstruos, hambre y veneno: peaceful, easy, normal o hard.", p["difficulty"] ?? "normal", DIFFICULTIES, dis)}
         ${sel("pp-mode", "Gamemode", "Modo de juego al entrar: survival, creative, adventure o spectator.", p["gamemode"] ?? "survival", GAMEMODES, dis)}
@@ -312,6 +320,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     try {
       await api.setProperties(name, {
         "server-port": val("pp-port"),
+        "server-ip": val("pp-ip"),
         "online-mode": val("pp-online"),
         difficulty: val("pp-diff"),
         gamemode: val("pp-mode"),

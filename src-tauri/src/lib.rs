@@ -169,6 +169,11 @@ fn get_icon(app: AppHandle, name: String) -> Result<Option<String>> {
     server_manager::get_icon(&app, &name)
 }
 
+#[tauri::command]
+fn local_ips() -> Vec<String> {
+    server_manager::local_ips()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -196,6 +201,7 @@ pub fn run() {
             read_log_file,
             set_icon,
             get_icon,
+            local_ips,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -130,4 +130,5 @@ export const api = {
     invoke<string[]>("read_log_file", { name, file, maxLines: max_lines }),
   setIcon: (name: string, data_url: string) => invoke<void>("set_icon", { name, dataUrl: data_url }),
   getIcon: (name: string) => invoke<string | null>("get_icon", { name }),
+  localIps: () => invoke<string[]>("local_ips"),
 };

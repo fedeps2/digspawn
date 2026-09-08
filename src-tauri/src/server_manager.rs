@@ -148,6 +148,27 @@ pub fn host_ram_mb() -> Result<u64> {
     Ok(mb)
 }
 
+/// IPs locales IPv4 (sin loopback) para mostrarle al pana cuál pasarle
+/// a sus amigos (LAN o la de ZeroTier/Radmin).
+pub fn local_ips() -> Vec<String> {
+    let nets = sysinfo::Networks::new_with_refreshed_list();
+    let mut out = vec![];
+    for (_iface, net) in &nets {
+        for ipnet in net.ip_networks() {
+            if let std::net::IpAddr::V4(v4) = ipnet.addr {
+                if !v4.is_loopback() {
+                    let s = v4.to_string();
+                    if !out.contains(&s) {
+                        out.push(s);
+                    }
+                }
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Icono custom (icon.png del layout del SPEC).
 // ---------------------------------------------------------------------------
@@ -393,6 +414,15 @@ mod tests {
     fn accepts_sane_names() {
         assert_eq!(validate_name("  Mi Server 1 ").unwrap(), "Mi Server 1");
         assert_eq!(validate_name("server-test_v2.0").unwrap(), "server-test_v2.0");
+    }
+
+    #[test]
+    fn local_ips_are_valid_v4_no_loopback() {
+        for ip in local_ips() {
+            let addr: std::net::IpAddr = ip.parse().expect("IP válida");
+            assert!(addr.is_ipv4(), "{ip} no es v4");
+            assert!(!addr.is_loopback(), "{ip} es loopback");
+        }
     }
 
     #[test]

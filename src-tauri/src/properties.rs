@@ -58,6 +58,15 @@ pub fn validate(key: &str, value: &str) -> Result<String> {
             }
             Ok(v)
         }
+        "server-ip" => {
+            // Vacío = bindea en todas las interfaces (default vanilla).
+            if v.is_empty() {
+                return Ok(String::new());
+            }
+            v.parse::<std::net::IpAddr>()
+                .map(|ip| ip.to_string())
+                .map_err(|_| ServerError::InvalidName("IP inválida (ej: 192.168.1.10).".to_string()))
+        }
         _ => Err(ServerError::InvalidName(format!("Propiedad no editable: {key}."))),
     }
 }
@@ -194,5 +203,9 @@ mod tests {
         assert!(validate("view-distance", "64").is_err());
         assert!(validate("motd", "").is_err());
         assert!(validate("seed-cualquiera", "x").is_err());
+        assert_eq!(validate("server-ip", "").unwrap(), "");
+        assert_eq!(validate("server-ip", "192.168.1.10").unwrap(), "192.168.1.10");
+        assert_eq!(validate("server-ip", " 10.0.0.5 ").unwrap(), "10.0.0.5");
+        assert!(validate("server-ip", "no-es-ip").is_err());
     }
 }

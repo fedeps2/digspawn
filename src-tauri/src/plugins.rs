@@ -125,7 +125,8 @@ pub fn set_plugin_enabled_at(server_dir: &Path, file: &str, enabled: bool) -> Re
     }
 }
 
-fn server_dir_of(
+/// Carpeta del server (compartido con modrinth.rs: no duplicar).
+pub(crate) fn server_dir_of(
     app: &tauri::AppHandle,
     name: &str,
 ) -> Result<std::path::PathBuf> {

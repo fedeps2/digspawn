@@ -125,6 +125,31 @@ export interface Settings {
   default_ram_mb: number;
 }
 
+export interface SearchHit {
+  project_id: string;
+  title: string;
+  author: string;
+  description: string;
+  downloads: number;
+  icon_url: string | null;
+  game_versions: string[];
+}
+
+export interface InstallReport {
+  installed: string[];
+  skipped: string[];
+  optional_deps: string[];
+  version_label: string;
+}
+
+export interface PluginProgress {
+  server: string;
+  file: string;
+  downloaded: number;
+  total: number | null;
+  pct: number | null;
+}
+
 /** Extrae el mensaje legible de un fallo de `invoke`. */
 export function errMsg(e: unknown): string {
   if (typeof e === "string") return e;
@@ -170,4 +195,7 @@ export const api = {
     invoke<string>("set_plugin_enabled", { name, file, enabled }),
   getSettings: () => invoke<Settings>("get_settings"),
   setSettings: (settings: Settings) => invoke<Settings>("set_settings", { settings }),
+  searchPlugins: (query: string) => invoke<SearchHit[]>("search_plugins", { query }),
+  installPlugin: (server_name: string, project_id: string) =>
+    invoke<InstallReport>("install_plugin", { serverName: server_name, projectId: project_id }),
 };

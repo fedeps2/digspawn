@@ -3,6 +3,7 @@
 
 pub mod errors;
 pub mod java;
+pub mod modrinth;
 pub mod mojang_api;
 pub mod paper_api;
 pub mod plugins;
@@ -207,6 +208,47 @@ fn set_settings(app: AppHandle, settings: settings::Settings) -> Result<settings
     settings::set_settings(&app, settings)
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct PluginProgress {
+    server: String,
+    file: String,
+    downloaded: u64,
+    total: Option<u64>,
+    pct: Option<f64>,
+}
+
+#[tauri::command]
+async fn search_plugins(query: String) -> Result<Vec<modrinth::SearchHit>> {
+    modrinth::search(&query).await
+}
+
+#[tauri::command]
+async fn install_plugin(
+    app: AppHandle,
+    server_name: String,
+    project_id: String,
+) -> Result<modrinth::InstallReport> {
+    use tauri::Emitter;
+    let clean = server_manager::validate_name(&server_name)?;
+    let dir = plugins::server_dir_of(&app, &clean)?;
+    let meta: server_manager::ServerMeta = serde_json::from_str(
+        &std::fs::read_to_string(dir.join(server_manager::SIDECAR)).map_err(|_| {
+            ServerError::NotFound("Falta digspawn.json: no es un server válido.".to_string())
+        })?,
+    )
+    .map_err(|e| ServerError::Io(format!("digspawn.json inválido: {e}")))?;
+    let server_ev = clean.clone();
+    let app_emit = app.clone();
+    let on_progress = move |file: String, downloaded: u64, total: Option<u64>| {
+        let pct = total.filter(|t| *t > 0).map(|t| downloaded as f64 / t as f64 * 100.0);
+        let _ = app_emit.emit(
+            "plugin-progress",
+            PluginProgress { server: server_ev.clone(), file, downloaded, total, pct },
+        );
+    };
+    modrinth::install_at(&dir, &project_id, &meta.version, &on_progress).await
+}
+
 #[tauri::command]
 async fn check_update() -> update::UpdateCheck {
     update::check_update().await
@@ -254,6 +296,8 @@ pub fn run() {
             set_plugin_enabled,
             get_settings,
             set_settings,
+            search_plugins,
+            install_plugin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

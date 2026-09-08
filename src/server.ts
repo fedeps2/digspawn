@@ -77,7 +77,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       <button id="tab-consola" type="button" data-tip="Lo que el server está diciendo en vivo, y caja para mandarle comandos.">Consola</button>
       <button id="tab-jugadores" type="button" data-tip="Quién está conectado ahora (se detecta del log).">Jugadores</button>
       <button id="tab-comandos" type="button" data-tip="Atajos para los comandos más usados, sin escribirlos a mano.">Comandos</button>
-      <button id="tab-plugins" type="button" data-tip="Plugins (.jar) del server. Después va a servir también para mods.">Plugins</button>
+      ${info.type === "paper" ? `<button id="tab-plugins" type="button" data-tip="Plugins (.jar) del server. Después va a servir también para mods.">Plugins</button>` : ""}
       <button id="tab-ajustes" type="button" data-tip="Configuración del server. Solo se edita frenado; aplica al arrancar.">Ajustes</button>
       <button id="tab-historial" type="button" data-tip="Logs guardados: el último log, rotados viejos y crashlogs.">Historial</button>
     </div>
@@ -96,8 +96,10 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   const tabHistorial = view.querySelector<HTMLButtonElement>("#tab-historial")!;
   const tabComandos = view.querySelector<HTMLButtonElement>("#tab-comandos")!;
   const tabJugadores = view.querySelector<HTMLButtonElement>("#tab-jugadores")!;
-  const tabPlugins = view.querySelector<HTMLButtonElement>("#tab-plugins")!;
+  const tabPlugins = view.querySelector<HTMLButtonElement>("#tab-plugins");
+  const isPaper = info.type === "paper";
   const players = new Map<string, number>(); // nombre -> timestamp de join
+  const serverVersion: string = info.version;
   let pendingEcho: string[] = [];
   let logQueue: string[] = [];
   let logFlushOn = false;
@@ -119,7 +121,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     tabHistorial.classList.toggle("sel", tab === "historial");
     tabComandos.classList.toggle("sel", tab === "comandos");
     tabJugadores.classList.toggle("sel", tab === "jugadores");
-    tabPlugins.classList.toggle("sel", tab === "plugins");
+    tabPlugins?.classList.toggle("sel", tab === "plugins");
     if (tab === "consola") renderConsola();
     else if (tab === "ajustes") void renderAjustes();
     else if (tab === "historial") void renderHistorial();
@@ -521,6 +523,13 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   let plugFiles: import("./api").PluginInfo[] | null = null;
   let plugError: string | null = null;
   let plugBusy = false;
+  let searchQuery = "";
+  let searchHits: import("./api").SearchHit[] = [];
+  let searching = false;
+  let searchError: string | null = null;
+  let installingId: string | null = null;
+  let installProgress: import("./api").PluginProgress | null = null;
+  let installMsg: string | null = null;
 
   async function renderPlugins(): Promise<void> {
     if (plugFiles === null && plugError === null) {
@@ -536,7 +545,33 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       return;
     }
     const files = plugFiles ?? [];
+    const mcVersion = serverVersion;
     tabBody.innerHTML = `
+      <h3>Buscar plugins</h3>
+      <form id="plug-search-form" class="row" style="gap:.5rem;margin-bottom:.75rem">
+        <input id="plug-q" placeholder="ej: essentials, luckperms…" value="${esc(searchQuery)}" style="flex:1" data-tip="Busca en Modrinth, solo compatibles con tu versión." />
+        <button type="submit">Buscar</button>
+      </form>
+      ${searching ? `<p class="muted">Buscando…</p>` : ""}
+      ${searchError ? `<p class="error">${esc(searchError)}</p>` : ""}
+      ${searchHits.length > 0 ? `<div class="players">${searchHits
+        .map(
+          (h) => {
+            const compat = h.game_versions.includes(mcVersion);
+            return `<div class="card">
+              <div class="card-icon">🔌</div>
+              <div class="card-body"><strong>${esc(h.title)}</strong>
+                <span class="state">por ${esc(h.author)} · ${(h.downloads / 1000).toFixed(0)}k descargas</span>
+                <span class="badge">${compat ? `compatible con tu ${esc(mcVersion)}` : "revisá compatibilidad"}</span>
+                <span class="muted">${esc(h.description.slice(0, 120))}</span></div>
+              <button data-install="${esc(h.project_id)}" type="button" ${installingId ? "disabled" : ""}>${installingId === h.project_id ? "…" : "Instalar"}</button>
+            </div>`;
+          },
+        )
+        .join("")}</div>` : ""}
+      ${installProgress ? `<p id="plug-prog" class="muted">Bajando ${esc(installProgress.file)}… ${installProgress.pct !== null ? `${installProgress.pct.toFixed(0)}%` : ""}</p><progress max="100" value="${installProgress.pct ?? 0}"></progress>` : ""}
+      ${installMsg ? `<p class="muted">${esc(installMsg)}</p>` : ""}
+      <h3>Instalados</h3>
       <div class="plug-actions">
         <button id="plug-add" type="button" data-tip="Elegí un .jar de tu compu para sumarlo a este server.">Importar .jar</button>
         <span class="muted">o arrastrá el .jar acá adentro. Cambios aplican al reiniciar.</span>
@@ -589,6 +624,52 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
         paint();
       });
     });
+    tabBody.querySelector("#plug-search-form")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      searchQuery = tabBody.querySelector<HTMLInputElement>("#plug-q")?.value.trim() ?? "";
+      void doSearch();
+    });
+    tabBody.querySelectorAll<HTMLButtonElement>("[data-install]").forEach((b) => {
+      b.addEventListener("click", () => void doInstall(b.dataset.install ?? ""));
+    });
+  }
+
+  async function doSearch(): Promise<void> {
+    searching = true;
+    searchError = null;
+    searchHits = [];
+    paint();
+    try {
+      searchHits = await api.searchPlugins(searchQuery);
+    } catch (e) {
+      searchError = errMsg(e);
+    }
+    searching = false;
+    if (tab === "plugins") paint();
+  }
+
+  async function doInstall(projectId: string): Promise<void> {
+    installingId = projectId;
+    installProgress = null;
+    installMsg = null;
+    paint();
+    try {
+      const rep = await api.installPlugin(name, projectId);
+      const parts = [`Instalado: ${rep.installed.join(", ") || "nada nuevo"}.`];
+      if (rep.skipped.length > 0) parts.push(`Ya estaban: ${rep.skipped.join(", ")}.`);
+      if (rep.optional_deps.length > 0) {
+        parts.push(`Opcionales que podrías querer: ${rep.optional_deps.join(", ")} (no se instalan solas).`);
+      }
+      parts.push("Reiniciá el server para que carguen.");
+      installMsg = parts.join(" ");
+      plugFiles = null; // refrescar instalados
+    } catch (e) {
+      installMsg = null;
+      say(errMsg(e), true);
+    }
+    installingId = null;
+    installProgress = null;
+    paint();
   }
 
   async function pickPlugins(): Promise<void> {
@@ -671,6 +752,17 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       const pct = ev.payload.pct !== null ? ` ${ev.payload.pct.toFixed(0)}%` : "";
       javaEl.textContent = `Bajando Java ${ev.payload.version} portable…${pct} (solo la primera vez)`;
     }),
+    await listen<import("./api").PluginProgress>("plugin-progress", (ev) => {
+      if (ev.payload.server !== name || tab !== "plugins") return;
+      installProgress = ev.payload;
+      // Update en el lugar (sin re-render que mataría el input de búsqueda).
+      const bar = tabBody.querySelector<HTMLProgressElement>("progress");
+      if (bar && ev.payload.pct !== null) bar.value = ev.payload.pct;
+      const txt = tabBody.querySelector("#plug-prog");
+      if (txt && ev.payload.pct !== null) {
+        txt.textContent = `Bajando ${ev.payload.file}… ${ev.payload.pct.toFixed(0)}%`;
+      }
+    }),
   );
 
   async function run(op: () => Promise<void>, label: string): Promise<void> {
@@ -722,7 +814,8 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     tab = "jugadores";
     paint();
   });
-  tabPlugins.addEventListener("click", () => {
+  tabPlugins?.addEventListener("click", () => {
+    if (!isPaper) return;
     tab = "plugins";
     paint();
   });

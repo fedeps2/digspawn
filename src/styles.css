@@ -760,6 +760,13 @@ input[type="range"] {
   margin-right: -1.25rem;
 }
 
+/* Aire para el grid (la sidebar va pegada a los bordes). */
+.lib-layout > .grid,
+.lib-layout > .empty {
+  margin-top: 1.25rem;
+  margin-left: 0.5rem;
+}
+
 .card.sel {
   border-color: var(--accent-border);
   background: var(--surface-3);

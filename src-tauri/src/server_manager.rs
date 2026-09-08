@@ -136,8 +136,11 @@ pub fn delete_server(app: &AppHandle, name: &str) -> Result<()> {
 }
 
 /// RAM física del host en MB (guard rail del slider).
+/// OJO: `System::new_all()` tarda ~400ms (enumera todos los procesos);
+/// acá solo nos interesa la memoria, así que se usa `new()` + `refresh_memory()`.
 pub fn host_ram_mb() -> Result<u64> {
-    let sys = sysinfo::System::new_all();
+    let mut sys = sysinfo::System::new();
+    sys.refresh_memory();
     let mb = sys.total_memory() / 1024 / 1024;
     if mb == 0 {
         return Err(ServerError::Io("No se pudo leer la RAM del host.".to_string()));

@@ -46,6 +46,8 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   let propsError: string | null = null;
   let propsMsg: string | null = null;
   let hostMaxRam = 8192;
+  let iconUrl: string | null | undefined = undefined; // undefined = aún no pedido
+  let historyLoaded = false;
   let histFiles: import("./api").LogFile[] | null = null;
   let histError: string | null = null;
   let histSel: string | null = null;
@@ -92,6 +94,8 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   const tabJugadores = view.querySelector<HTMLButtonElement>("#tab-jugadores")!;
   const players = new Map<string, number>(); // nombre -> timestamp de join
   let pendingEcho: string[] = [];
+  let logQueue: string[] = [];
+  let logFlushOn = false;
 
   const running = () => state === "running" || state === "starting" || state === "stopping";
 
@@ -153,10 +157,26 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   }
 
   function appendLine(line: string): void {
-    (renderConsola as { append?: (l: string) => void }).append?.(line);
+    // Se encola y se vuelca por rAF: con un server que loguea mucho,
+    // un append+reflow por línea traba la UI (era el "se traba" general).
+    logQueue.push(line);
+    if (logQueue.length > MAX_LINES) logQueue.splice(0, logQueue.length - MAX_LINES);
+    if (!logFlushOn) {
+      logFlushOn = true;
+      requestAnimationFrame(() => {
+        logFlushOn = false;
+        const append = (renderConsola as { append?: (l: string) => void }).append;
+        if (!append || logQueue.length === 0) return; // se acumula hasta volver a Consola
+        const batch = logQueue;
+        logQueue = [];
+        for (const l of batch) append(l);
+      });
+    }
   }
 
   async function loadHistory(): Promise<void> {
+    if (historyLoaded) return; // una sola vez por vista (la cola cubre el resto)
+    historyLoaded = true;
     try {
       const hist = await api.readLog(name, 200);
       hist.forEach((l) => {
@@ -246,14 +266,22 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       if (lbl && ramInput) lbl.textContent = `${ramInput.value} MB`;
     });
     tabBody.querySelector("#pp-save")?.addEventListener("click", () => void saveProps());
-    // Icono actual + subida.
-    api.getIcon(name).then((url) => {
+    // Icono actual (se cachea: era un GET+base64 en cada paint) + subida.
+    const showIcon = (url: string | null) => {
       const prev = tabBody.querySelector<HTMLImageElement>("#pp-icon-prev");
       if (prev && url) {
         prev.src = url;
         prev.hidden = false;
       }
-    }).catch(() => undefined);
+    };
+    if (iconUrl === undefined) {
+      api.getIcon(name).then((url) => {
+        iconUrl = url;
+        showIcon(url);
+      }).catch(() => undefined);
+    } else {
+      showIcon(iconUrl);
+    }
     tabBody.querySelector<HTMLInputElement>("#pp-icon")?.addEventListener("change", (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
@@ -261,6 +289,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       reader.onload = () => {
         const url = String(reader.result ?? "");
         api.setIcon(name, url).then(() => {
+          iconUrl = url; // refresca el cache
           const prev = tabBody.querySelector<HTMLImageElement>("#pp-icon-prev");
           if (prev) {
             prev.src = url;

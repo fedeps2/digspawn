@@ -637,15 +637,21 @@ fn host_stats(sys: &sysinfo::System) -> HostStats {
 }
 
 /// Foto de host + cada server corriendo (por PID).
+/// OJO perf: `new_all()` + `refresh_all()` cuestan ~500ms porque enumeran
+/// TODOS los procesos del equipo. Acá solo se refresca memoria, CPU global
+/// y los PIDs propios (~1ms), por eso el poll cada 2s no traba nada.
 pub fn server_stats(app: &AppHandle) -> Result<AllStats> {
-    let mut sys = sysinfo::System::new_all();
-    sys.refresh_all();
-    let host = host_stats(&sys);
     let procs: tauri::State<'_, ProcessState> = app.state::<ProcessState>();
     let snapshot: Vec<(String, u32)> = {
         let running = procs.running.lock().expect("lock");
         running.iter().map(|(n, r)| (n.clone(), r.pid)).collect()
     };
+    let mut sys = sysinfo::System::new();
+    sys.refresh_memory();
+    sys.refresh_cpu_all();
+    let pids: Vec<sysinfo::Pid> = snapshot.iter().map(|(_, pid)| sysinfo::Pid::from_u32(*pid)).collect();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&pids), true);
+    let host = host_stats(&sys);
     let mut servers = vec![];
     for (name, pid) in snapshot {
         let (ram_mb, cpu_pct) = sys
@@ -692,7 +698,8 @@ pub fn preflight(app: &AppHandle, name: &str) -> Result<Preflight> {
     let clean = server_manager::validate_name(name)?;
     let dir = server_path(app, &clean)?;
     let meta = read_meta(&dir)?;
-    let mut sys = sysinfo::System::new_all();
+    // `new()` + `refresh_memory()`: ~0.1ms. (`new_all()` tardaba ~400ms.)
+    let mut sys = sysinfo::System::new();
     sys.refresh_memory();
     let total_mb = sys.total_memory() / 1024 / 1024;
     let used_mb = sys.used_memory() / 1024 / 1024;

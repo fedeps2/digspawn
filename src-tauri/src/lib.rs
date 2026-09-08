@@ -15,7 +15,7 @@ pub mod settings;
 pub mod update;
 
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use errors::{Result, ServerError};
 use server_manager::{CreateInput, ImportInput, ServerInfo};
@@ -285,6 +285,13 @@ fn import_server(app: AppHandle, input: ImportInput) -> Result<ServerInfo> {
 pub fn run() {
     tauri::Builder::default()
         .manage(processes::ProcessState::new())
+        // Una sola instancia: si ya corre, enfoca la ventana existente en
+        // vez de levantar un segundo backend que pelee por los servers.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![

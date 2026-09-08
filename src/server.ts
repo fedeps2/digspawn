@@ -893,7 +893,11 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   }
 
   toggleBtn.addEventListener("click", () => void onToggle());
-  restartBtn.addEventListener("click", () => void run(() => api.restartServer(name), "Reiniciando…"));
+  restartBtn.addEventListener("click", () => {
+    // TEMPORAL diagnóstico (restart no se logueaba).
+    void api.debugLog(`restart-click name=${name} state=${state}`);
+    void run(() => api.restartServer(name), "Reiniciando…");
+  });
 
   tabConsola.addEventListener("click", () => {
     tab = "consola";

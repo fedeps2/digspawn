@@ -75,7 +75,7 @@ export function openWizard(root: HTMLElement, onDone: () => void): void {
     switch (st.step) {
       case 1:
         return `
-          <label>Nombre del server
+          <label data-tip="El nombre que ves en la biblioteca. También va a ser el nombre de la carpeta.">Nombre del server
             <input id="wz-name" value="${esc(st.name)}" placeholder="Mi server" maxlength="64" />
           </label>
           ${st.nameError ? `<p class="error">${esc(st.nameError)}</p>` : ""}
@@ -83,10 +83,10 @@ export function openWizard(root: HTMLElement, onDone: () => void): void {
       case 2:
         return `
           <div class="type-cards">
-            <button class="type-card ${st.type === "paper" ? "sel" : ""}" data-type="paper" type="button">
+            <button class="type-card ${st.type === "paper" ? "sel" : ""}" data-type="paper" type="button" data-tip="Recomendado: más rápido que el Vanilla y acepta plugins.">
               <strong>Paper</strong><span>Recomendado — corre plugins, mejor performance.</span>
             </button>
-            <button class="type-card ${st.type === "vanilla" ? "sel" : ""}" data-type="vanilla" type="button">
+            <button class="type-card ${st.type === "vanilla" ? "sel" : ""}" data-type="vanilla" type="button" data-tip="El server tal cual lo hizo Mojang: sin plugins ni mods.">
               <strong>Vanilla</strong><span>Jar oficial de Mojang, ni plugins ni mods.</span>
             </button>
           </div>`;
@@ -94,13 +94,13 @@ export function openWizard(root: HTMLElement, onDone: () => void): void {
         if (st.versionsLoading) return `<p class="muted">Cargando versiones…</p>`;
         if (st.versionsError) return `<p class="error">${esc(st.versionsError)}</p><button id="wz-retry" type="button">Reintentar</button>`;
         return `
-          <label>Versión
+          <label data-tip="Versión de Minecraft del server. Por default va la última.">Versión
             <select id="wz-version">
               ${st.versions.map((v) => `<option value="${esc(v.id)}" ${v.id === st.version ? "selected" : ""}>${esc(v.id)}${v.kind !== "release" ? ` (${esc(v.kind)})` : ""}</option>`).join("")}
             </select>
           </label>
           ${st.type === "vanilla" ? `
-          <label class="check"><input id="wz-snap" type="checkbox" ${st.includeSnapshots ? "checked" : ""} /> Incluir snapshots</label>` : ""}
+          <label class="check" data-tip="Muestra versiones en desarrollo. Pueden tener bugs: solo si sabés lo que hacés."><input id="wz-snap" type="checkbox" ${st.includeSnapshots ? "checked" : ""} /> Incluir snapshots</label>` : ""}
           <p class="muted">Por default, la última versión.</p>`;
       case 4:
         return `
@@ -111,10 +111,10 @@ export function openWizard(root: HTMLElement, onDone: () => void): void {
           <p class="muted">En este hito solo se detecta; el autoinstall portable llega después.</p>`;
       case 5:
         return `
-          <label>RAM: <strong>${st.ram} MB</strong>
+          <label data-tip="Memoria para este server. 2048 MB alcanza para jugar de a varios.">RAM: <strong>${st.ram} MB</strong>
             <input id="wz-ram" type="range" min="512" max="${st.maxRam}" step="256" value="${st.ram}" />
           </label>
-          <label class="check"><input id="wz-eula" type="checkbox" ${st.eula ? "checked" : ""} />
+          <label class="check" data-tip="Las reglas de Mojang exigen aceptar su licencia para hostear un server."><input id="wz-eula" type="checkbox" ${st.eula ? "checked" : ""} />
             Acepto la <a id="wz-eula-link" href="#">EULA de Minecraft</a></label>
           ${st.creating ? `<p class="muted">Bajando el jar… ${st.progress !== null ? `${st.progress.toFixed(0)}%` : ""}</p><progress max="100" value="${st.progress ?? 0}"></progress>` : ""}
           ${st.createError ? `<p class="error">${esc(st.createError)}</p>` : ""}`;
@@ -127,7 +127,7 @@ export function openWizard(root: HTMLElement, onDone: () => void): void {
     const back = st.step > 1 && !st.creating ? `<button id="wz-back" type="button">Atrás</button>` : `<span></span>`;
     if (st.step < 5) return `${back}<button id="wz-next" type="button">Siguiente</button>`;
     const label = st.creating ? "Creando…" : "Crear server";
-    return `${back}<button id="wz-create" type="button" ${st.creating ? "disabled" : ""}>${label}</button>`;
+    return `${back}<button id="wz-create" type="button" data-tip="Baja el jar, firma la eula y genera la config. Después aparece en tu biblioteca." ${st.creating ? "disabled" : ""}>${label}</button>`;
   }
 
   function wire(): void {

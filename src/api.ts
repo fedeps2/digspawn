@@ -88,6 +88,13 @@ export interface Preflight {
   warnings: string[];
 }
 
+export interface LogFile {
+  file: string;
+  kind: string; // "crash" | "latest" | "rotated"
+  size: number;
+  modified: number; // unix timestamp
+}
+
 /** Extrae el mensaje legible de un fallo de `invoke`. */
 export function errMsg(e: unknown): string {
   if (typeof e === "string") return e;
@@ -118,4 +125,7 @@ export const api = {
   setRam: (name: string, ram_mb: number) => invoke<void>("set_ram", { name, ramMb: ram_mb }),
   serverStats: () => invoke<AllStats>("server_stats"),
   preflight: (name: string) => invoke<Preflight>("preflight", { name }),
+  listLogFiles: (name: string) => invoke<LogFile[]>("list_log_files", { name }),
+  readLogFile: (name: string, file: string, max_lines: number) =>
+    invoke<string[]>("read_log_file", { name, file, maxLines: max_lines }),
 };

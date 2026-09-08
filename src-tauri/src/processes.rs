@@ -2,7 +2,7 @@
 // el SPEC describía un único "server activo").
 // stdin por pipe, stdout/stderr a eventos `log-line`, estados `server-state`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -50,6 +50,20 @@ struct Running {
     child: Arc<tokio::sync::Mutex<Child>>,
     stdin: Arc<tokio::sync::Mutex<ChildStdin>>,
     pid: u32,
+    /// Últimas líneas del log (para el crashlog). Compartido por ambos pumps.
+    ring: Arc<Mutex<VecDeque<String>>>,
+}
+
+/// Tope del ring (y de cada crashlog).
+pub const RING_CAP: usize = 300;
+
+/// Agrega una línea al ring, manteniendo el tope.
+pub fn push_ring(ring: &Mutex<VecDeque<String>>, line: String) {
+    let mut ring = ring.lock().expect("lock");
+    ring.push_back(line);
+    while ring.len() > RING_CAP {
+        ring.pop_front();
+    }
 }
 
 /// Estado global (uno por app): qué servers están corriendo.
@@ -149,7 +163,13 @@ pub async fn spawn_process(java: &Path, dir: &Path, ram_mb: u64) -> Result<Child
         .map_err(|e| ServerError::Io(format!("No se pudo arrancar java: {e}")))
 }
 
-async fn pump_stream(app: AppHandle, name: String, stream: ChildStdout, ready_tx: tokio::sync::mpsc::Sender<()>) {
+async fn pump_stream(
+    app: AppHandle,
+    name: String,
+    stream: ChildStdout,
+    ring: Arc<Mutex<VecDeque<String>>>,
+    ready_tx: tokio::sync::mpsc::Sender<()>,
+) {
     let mut lines = tokio::io::BufReader::new(stream).lines();
     let mut ready_sent = false;
     while let Ok(Some(line)) = lines.next_line().await {
@@ -158,6 +178,7 @@ async fn pump_stream(app: AppHandle, name: String, stream: ChildStdout, ready_tx
             emit_state(&app, &name, STATE_RUNNING);
             let _ = ready_tx.send(()).await;
         }
+        push_ring(&ring, line.clone());
         emit_line(&app, &name, &line);
     }
 }
@@ -200,6 +221,7 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
     let stdin = child.stdin.take().expect("stdin piped");
     // stderr se le trata como stdout más (MC loguea casi todo por stdout).
     let (ready_tx, mut ready_rx) = tokio::sync::mpsc::channel::<()>(1);
+    let ring: Arc<Mutex<VecDeque<String>>> = Arc::new(Mutex::new(VecDeque::new()));
 
     {
         let mut running = procs.running.lock().expect("lock");
@@ -209,6 +231,7 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
                 child: Arc::new(tokio::sync::Mutex::new(child)),
                 stdin: Arc::new(tokio::sync::Mutex::new(stdin)),
                 pid: pid.unwrap_or(0),
+                ring: ring.clone(),
             },
         );
     }
@@ -216,36 +239,57 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
 
     // Lectores (no tocan el mapa).
     let (app_o, name_o) = (app.clone(), clean.clone());
-    tokio::spawn(pump_stream(app_o, name_o, stdout, ready_tx));
+    let ring_o = ring.clone();
+    tokio::spawn(pump_stream(app_o, name_o, stdout, ring_o, ready_tx));
     let (app_e, name_e) = (app.clone(), clean.clone());
+    let ring_e = ring.clone();
     tokio::spawn(async move {
         let mut lines = tokio::io::BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
+            push_ring(&ring_e, line.clone());
             emit_line(&app_e, &name_e, &line);
         }
     });
 
     // Vigilante: espera el exit y publica el estado final (solo quien
     // saque la entrada del mapa emite, para no duplicar con stop()).
+    // Si el exit es anormal, vuelca el ring a crashlogs/.
     let (app_w, name_w) = (app.clone(), clean.clone());
     tokio::spawn(async move {
         // Si nunca llegó el "Done", igual se espera al proceso.
         let _ = tokio::time::timeout(Duration::from_secs(240), ready_rx.recv()).await;
         let procs = app_w.state::<ProcessState>();
-        let status = {
-            let entry = {
-                let running = procs.running.lock().expect("lock");
-                running.get(&name_w).map(|r| r.child.clone())
-            };
-            match entry {
-                Some(child) => child.lock().await.wait().await.ok(),
+        let (child, ring) = {
+            let running = procs.running.lock().expect("lock");
+            match running.get(&name_w) {
+                Some(r) => (r.child.clone(), r.ring.clone()),
                 None => return, // stop() ya lo cosechó y emitió.
             }
         };
+        // wait() sin el lock global tomado (stop() puede estar esperando).
+        let status = child.lock().await.wait().await.ok();
         let mut running = procs.running.lock().expect("lock");
         if running.remove(&name_w).is_some() {
+            drop(running);
             let crashed = !matches!(status.map(|s| s.success()), Some(true));
-            emit_state(&app_w, &name_w, if crashed { STATE_CRASHED } else { STATE_STOPPED });
+            if crashed {
+                if let Ok(dir) = server_path(&app_w, &name_w) {
+                    let lines: Vec<String> = ring.lock().expect("lock").iter().cloned().collect();
+                    match dump_crashlog(&dir, &lines) {
+                        Ok(path) => emit_line(
+                            &app_w,
+                            &name_w,
+                            &format!("Crashlog guardado en {}", path.display()),
+                        ),
+                        Err(e) => {
+                            emit_line(&app_w, &name_w, &format!("No se pudo guardar crashlog: {e}"))
+                        }
+                    }
+                }
+                emit_state(&app_w, &name_w, STATE_CRASHED);
+            } else {
+                emit_state(&app_w, &name_w, STATE_STOPPED);
+            }
         }
     });
     Ok(())
@@ -354,11 +398,148 @@ pub fn read_log(app: &AppHandle, name: &str, max_lines: u32) -> Result<Vec<Strin
     if !log.is_file() {
         return Ok(vec![]);
     }
-    let raw = std::fs::read_to_string(&log)?;
-    let n = max_lines.clamp(20, 500) as usize;
+    tail_lines(&log, max_lines.clamp(20, 2000) as usize)
+}
+
+// ---------------------------------------------------------------------------
+// Crashlogs + historial de archivos.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LogFile {
+    /// Ruta relativa a la carpeta del server ("crashlogs/crash-....log",
+    /// "logs/latest.log", "logs/2026-09-01-1.log.gz").
+    pub file: String,
+    pub kind: String, // "crash" | "latest" | "rotated"
+    pub size: u64,
+    pub modified: u64, // unix timestamp
+}
+
+/// Vuelca las últimas líneas a `crashlogs/crash-<ts>.log`. Devuelve la ruta.
+pub fn dump_crashlog(dir: &Path, lines: &[String]) -> Result<PathBuf> {
+    let crashdir = dir.join("crashlogs");
+    std::fs::create_dir_all(&crashdir)?;
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let path = crashdir.join(format!("crash-{ts}.log"));
+    let mut out = format!("# Crashlog de Digspawn ({ts})\n# Últimas {} líneas antes de la caída.\n", lines.len());
+    for line in lines.iter().take(RING_CAP) {
+        out.push_str(line);
+        out.push('\n');
+    }
+    std::fs::write(&path, out)?;
+    Ok(path)
+}
+
+/// Resuelve un archivo de log pedido por la UI, sin path traversal:
+/// debe existir bajo la carpeta del server y ser .log o .log.gz.
+pub fn resolve_log_file(dir: &Path, file: &str) -> Result<PathBuf> {
+    if file.contains("..") || file.starts_with('/') || file.starts_with('\\') {
+        return Err(ServerError::InvalidName("Archivo de log inválido.".to_string()));
+    }
+    let base = dir
+        .canonicalize()
+        .map_err(|_| ServerError::NotFound("Carpeta del server inválida.".to_string()))?;
+    let target = base.join(file);
+    let canon = target
+        .canonicalize()
+        .map_err(|_| ServerError::NotFound("Archivo de log inexistente.".to_string()))?;
+    if !canon.starts_with(&base) {
+        return Err(ServerError::InvalidName("Archivo de log inválido.".to_string()));
+    }
+    let name = canon.to_string_lossy().into_owned();
+    if !(name.ends_with(".log") || name.ends_with(".log.gz")) {
+        return Err(ServerError::InvalidName("Solo se pueden leer .log y .log.gz.".to_string()));
+    }
+    Ok(canon)
+}
+
+/// Últimas `n` líneas de un .log o .log.gz.
+pub fn tail_lines(path: &Path, n: usize) -> Result<Vec<String>> {
+    let raw: String = if path.extension().map(|e| e == "gz").unwrap_or(false) {
+        let file = std::fs::File::open(path)?;
+        let mut gz = flate2::read::GzDecoder::new(file);
+        let mut s = String::new();
+        std::io::Read::read_to_string(&mut gz, &mut s)
+            .map_err(|e| ServerError::Io(format!("No se pudo descomprimir el log: {e}")))?;
+        s
+    } else {
+        std::fs::read_to_string(path)?
+    };
     let lines: Vec<String> = raw.lines().map(|s| s.to_string()).collect();
-    let skip = lines.len().saturating_sub(n);
+    let skip = lines.len().saturating_sub(n.max(1));
     Ok(lines.into_iter().skip(skip).collect())
+}
+
+fn file_meta(path: &Path) -> Option<(u64, u64)> {
+    let m = path.metadata().ok()?;
+    let modified = m
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    Some((m.len(), modified))
+}
+
+/// Lista latest.log + crashlogs/*.log + logs/*.log.gz (más nuevos primero).
+pub fn list_log_files(app: &AppHandle, name: &str) -> Result<Vec<LogFile>> {
+    let clean = server_manager::validate_name(name)?;
+    let dir = server_path(app, &clean)?;
+    let mut out = vec![];
+    let latest = dir.join("logs").join("latest.log");
+    if latest.is_file() {
+        if let Some((size, modified)) = file_meta(&latest) {
+            out.push(LogFile {
+                file: "logs/latest.log".to_string(),
+                kind: "latest".to_string(),
+                size,
+                modified,
+            });
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(dir.join("crashlogs")) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_file() && p.extension().map(|x| x == "log").unwrap_or(false) {
+                if let Some((size, modified)) = file_meta(&p) {
+                    out.push(LogFile {
+                        file: format!("crashlogs/{}", e.file_name().to_string_lossy()),
+                        kind: "crash".to_string(),
+                        size,
+                        modified,
+                    });
+                }
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(dir.join("logs")) {
+        for e in entries.flatten() {
+            let p = e.path();
+            let fname = e.file_name().to_string_lossy().into_owned();
+            if p.is_file() && fname.ends_with(".log.gz") {
+                if let Some((size, modified)) = file_meta(&p) {
+                    out.push(LogFile {
+                        file: format!("logs/{fname}"),
+                        kind: "rotated".to_string(),
+                        size,
+                        modified,
+                    });
+                }
+            }
+        }
+    }
+    out.sort_by(|a, b| b.modified.cmp(&a.modified));
+    Ok(out)
+}
+
+pub fn read_log_file(app: &AppHandle, name: &str, file: &str, max_lines: u32) -> Result<Vec<String>> {
+    let clean = server_manager::validate_name(name)?;
+    let dir = server_path(app, &clean)?;
+    let path = resolve_log_file(&dir, file)?;
+    tail_lines(&path, max_lines.clamp(20, 2000) as usize)
 }
 
 pub fn state_of(app: &AppHandle, name: &str) -> String {
@@ -593,6 +774,64 @@ mod tests {
         assert!(me.memory() > 0);
     }
 
+    #[test]
+    fn ring_caps_at_300_keeping_order() {
+        let ring = Mutex::new(VecDeque::new());
+        for i in 0..350 {
+            push_ring(&ring, format!("l{i}"));
+        }
+        let ring = ring.lock().expect("lock");
+        assert_eq!(ring.len(), RING_CAP);
+        assert_eq!(ring[0], "l50");
+        assert_eq!(ring[RING_CAP - 1], "l349");
+    }
+
+    #[test]
+    fn crashlog_dumps_to_file() {
+        let tmp = std::env::temp_dir().join("digspawn-test-crash");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let lines: Vec<String> = (0..5).map(|i| format!("linea {i}")).collect();
+        let path = dump_crashlog(&tmp, &lines).unwrap();
+        assert!(path.starts_with(tmp.join("crashlogs")));
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(raw.contains("linea 4"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn resolve_rejects_traversal_and_keeps_allowed() {
+        let tmp = std::env::temp_dir().join("digspawn-test-resolve");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(tmp.join("crashlogs")).unwrap();
+        std::fs::create_dir_all(tmp.join("logs")).unwrap();
+        std::fs::write(tmp.join("crashlogs").join("crash-1.log"), "x\n").unwrap();
+        assert!(resolve_log_file(&tmp, "crashlogs/crash-1.log").is_ok());
+        assert!(resolve_log_file(&tmp, "../fuera.log").is_err());
+        assert!(resolve_log_file(&tmp, "crashlogs/../../x.log").is_err());
+        assert!(resolve_log_file(&tmp, "server.jar").is_err());
+        assert!(resolve_log_file(&tmp, "crashlogs/noexiste.log").is_err());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn tail_reads_gz() {
+        use std::io::Write;
+        let tmp = std::env::temp_dir().join("digspawn-test-gz");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let gz_path = tmp.join("2026-01-01-1.log.gz");
+        let f = std::fs::File::create(&gz_path).unwrap();
+        let mut enc = flate2::write::GzEncoder::new(f, flate2::Compression::fast());
+        for i in 0..10 {
+            writeln!(enc, "g{i}").unwrap();
+        }
+        enc.finish().unwrap();
+        let lines = tail_lines(&gz_path, 3).unwrap();
+        assert_eq!(lines, vec!["g7".to_string(), "g8".to_string(), "g9".to_string()]);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
     /// Boot real hasta "Done" + `say` + freno graceful con `stop`.
     /// Núcleo compartido por los smokes de Paper y Vanilla.
     async fn boot_and_stop(java: &Path, dir: &Path) {
@@ -675,6 +914,71 @@ mod tests {
                 .expect("java");
 
             boot_and_stop(&java, &dir).await;
+            let _ = std::fs::remove_dir_all(&tmp);
+        });
+    }
+
+    /// El watcher vuelca el ring al matar el proceso (kill = crash).
+    /// Reproduce el camino del watcher: ring con líneas reales → dump.
+    #[test]
+    #[ignore = "needs-network-heavy"]
+    fn live_crash_dump_on_kill() {
+        use std::sync::Mutex;
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let tmp = std::env::temp_dir().join("digspawn-test-crashlive");
+            let _ = std::fs::remove_dir_all(&tmp);
+            let servers = tmp.join("servers");
+            std::fs::create_dir_all(&servers).unwrap();
+
+            let vs = crate::paper_api::list_versions().await.unwrap();
+            let info = crate::server_manager::create_server_at(
+                &servers,
+                crate::server_manager::CreateInput {
+                    name: "Crash Test".to_string(),
+                    server_type: "paper".to_string(),
+                    version: vs[0].id.clone(),
+                    ram_mb: 2048,
+                    accept_eula: true,
+                },
+                &|_, _| {},
+            )
+            .await
+            .expect("crear server");
+            let dir = servers.join(&info.name);
+            let required = crate::runtime::required_java_for(&info.server_type, &info.version).await;
+            let java = crate::runtime::ensure_runtime_at(&tmp, required, &|_, _| {})
+                .await
+                .expect("java");
+
+            let mut child = spawn_process(&java, &dir, 2048).await.expect("spawn");
+            let stdout = child.stdout.take().unwrap();
+            let mut lines = tokio::io::BufReader::new(stdout).lines();
+            let ring = Mutex::new(VecDeque::new());
+            // Juntar algunas líneas reales y matar de golpe (como kill -9).
+            for _ in 0..5 {
+                if let Ok(Some(line)) = lines.next_line().await {
+                    push_ring(&ring, line);
+                }
+            }
+            child.start_kill().expect("kill");
+            let status = child.wait().await.expect("wait tras kill");
+            assert!(!status.success(), "el kill debe dar exit anormal");
+
+            let dumped: Vec<String> = ring.lock().expect("lock").iter().cloned().collect();
+            assert!(!dumped.is_empty(), "el ring debe tener líneas reales");
+            let path = dump_crashlog(&dir, &dumped).unwrap();
+            assert!(path.is_file());
+            // Y aparece listado para el Historial.
+            let names: Vec<String> = std::fs::read_dir(dir.join("crashlogs"))
+                .unwrap()
+                .flatten()
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .collect();
+            assert_eq!(names.len(), 1);
             let _ = std::fs::remove_dir_all(&tmp);
         });
     }

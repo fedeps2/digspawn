@@ -37,14 +37,14 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
   const cards = servers
     .map(
       (s) => `
-      <div class="card" data-open="${escapeHtml(s.name)}" title="Abrir">
+      <div class="card" data-open="${escapeHtml(s.name)}" data-tip="Click para abrir, doble click para arrancar directo.">
         <div class="card-icon">${s.type === "paper" ? "📄" : "🧱"}</div>
         <div class="card-body">
           <strong>${escapeHtml(s.name)}</strong>
           <span class="badge">${escapeHtml(badge(s))}</span>
           <span class="state">${s.state === "running" ? "🟢 corriendo" : "⚪ parado"} · ${s.ram_mb} MB</span>
         </div>
-        <button class="card-del" data-del="${escapeHtml(s.name)}" type="button" title="Borrar">✕</button>
+        <button class="card-del" data-del="${escapeHtml(s.name)}" type="button" data-tip="Borra el server y su carpeta completa.">✕</button>
       </div>`,
     )
     .join("");

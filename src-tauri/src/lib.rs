@@ -149,6 +149,16 @@ fn preflight(app: AppHandle, name: String) -> Result<processes::Preflight> {
     processes::preflight(&app, &name)
 }
 
+#[tauri::command]
+fn list_log_files(app: AppHandle, name: String) -> Result<Vec<processes::LogFile>> {
+    processes::list_log_files(&app, &name)
+}
+
+#[tauri::command]
+fn read_log_file(app: AppHandle, name: String, file: String, max_lines: u32) -> Result<Vec<String>> {
+    processes::read_log_file(&app, &name, &file, max_lines)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -172,6 +182,8 @@ pub fn run() {
             set_ram,
             server_stats,
             preflight,
+            list_log_files,
+            read_log_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

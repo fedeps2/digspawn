@@ -41,11 +41,16 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   let state: string = info.state;
   let ramMb: number = info.ram_mb;
   let busy = false;
-  let tab: "consola" | "ajustes" = "consola";
+  let tab: "consola" | "ajustes" | "historial" = "consola";
   let props: Record<string, string> | null = null;
   let propsError: string | null = null;
   let propsMsg: string | null = null;
   let hostMaxRam = 8192;
+  let histFiles: import("./api").LogFile[] | null = null;
+  let histError: string | null = null;
+  let histSel: string | null = null;
+  let histLines: string[] = [];
+  let histLoading = false;
   const unlistens: UnlistenFn[] = [];
   let pollTimer = 0;
 
@@ -57,15 +62,16 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     </div>
     <p id="sv-stats" class="muted"></p>
     <div class="sv-actions">
-      <button id="sv-start" type="button">Iniciar</button>
-      <button id="sv-stop" type="button">Frenar</button>
-      <button id="sv-restart" type="button">Reiniciar</button>
+      <button id="sv-start" type="button" data-tip="Arranca el server. Si falta el Java que necesita, lo descarga solo la primera vez.">Iniciar</button>
+      <button id="sv-stop" type="button" data-tip="Apaga el server avisándole antes, así guarda el mundo.">Frenar</button>
+      <button id="sv-restart" type="button" data-tip="Apaga y vuelve a prender. Sirve para aplicar cambios de Ajustes.">Reiniciar</button>
     </div>
     <p id="sv-msg" class="muted"></p>
     <div id="sv-java" class="muted" hidden></div>
     <div class="tabs">
-      <button id="tab-consola" type="button">Consola</button>
-      <button id="tab-ajustes" type="button">Ajustes</button>
+      <button id="tab-consola" type="button" data-tip="Lo que el server está diciendo en vivo, y caja para mandarle comandos.">Consola</button>
+      <button id="tab-ajustes" type="button" data-tip="Configuración del server. Solo se edita frenado; aplica al arrancar.">Ajustes</button>
+      <button id="tab-historial" type="button" data-tip="Logs guardados: el último log, rotados viejos y crashlogs.">Historial</button>
     </div>
     <div id="sv-tab-body"></div>`;
 
@@ -79,6 +85,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   const tabBody = view.querySelector<HTMLElement>("#sv-tab-body")!;
   const tabConsola = view.querySelector<HTMLButtonElement>("#tab-consola")!;
   const tabAjustes = view.querySelector<HTMLButtonElement>("#tab-ajustes")!;
+  const tabHistorial = view.querySelector<HTMLButtonElement>("#tab-historial")!;
 
   const running = () => state === "running" || state === "starting" || state === "stopping";
 
@@ -94,8 +101,10 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     restartBtn.disabled = busy || !running();
     tabConsola.classList.toggle("sel", tab === "consola");
     tabAjustes.classList.toggle("sel", tab === "ajustes");
+    tabHistorial.classList.toggle("sel", tab === "historial");
     if (tab === "consola") renderConsola();
-    else void renderAjustes();
+    else if (tab === "ajustes") void renderAjustes();
+    else void renderHistorial();
   }
 
   function say(msg: string, isErr: boolean): void {
@@ -108,8 +117,8 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     tabBody.innerHTML = `
       <div id="sv-log" class="console"></div>
       <form id="sv-form" class="row">
-        <input id="sv-input" placeholder="Comando… (Enter envía)" autocomplete="off" />
-        <button type="submit">Enviar</button>
+        <input id="sv-input" placeholder="Comando… (Enter envía)" autocomplete="off" data-tip="Escribí como si fueras la consola del server: say hola, stop, op, etc." />
+        <button type="submit" data-tip="Manda lo escrito al server.">Enviar</button>
       </form>`;
     const logEl = tabBody.querySelector<HTMLElement>("#sv-log")!;
     const inputEl = tabBody.querySelector<HTMLInputElement>("#sv-input")!;
@@ -148,10 +157,25 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   }
 
   // ---- Ajustes ----
-  function sel(id: string, label: string, val: string, opts: string[], disabled: boolean): string {
-    return `<label>${label}<select id="${id}" ${disabled ? "disabled" : ""}>${opts
+  function sel(
+    id: string,
+    label: string,
+    tip: string,
+    val: string,
+    opts: string[],
+    disabled: boolean,
+  ): string {
+    return `<label data-tip="${tip}">${label}<select id="${id}" ${disabled ? "disabled" : ""}>${opts
       .map((o) => `<option value="${o}" ${o === val ? "selected" : ""}>${o}</option>`)
       .join("")}</select></label>`;
+  }
+
+  function field(
+    label: string,
+    tip: string,
+    inner: string,
+  ): string {
+    return `<label data-tip="${tip}">${label}${inner}</label>`;
   }
 
   async function renderAjustes(): Promise<void> {
@@ -174,22 +198,24 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       return;
     }
     const p = props ?? {};
+    const num = (id: string, key: string, extra: string) =>
+      `<input id="${id}" type="number" ${extra} value="${esc(p[key] ?? "")}" ${dis ? "disabled" : ""} />`;
     tabBody.innerHTML = `
       ${dis ? `<p class="muted">Frená el server para editar (aplica al arrancar).</p>` : ""}
       <div class="props-grid">
-        <label>Puerto<input id="pp-port" type="number" min="1" max="65535" value="${esc(p["server-port"] ?? "25565")}" ${dis ? "disabled" : ""} /></label>
-        ${sel("pp-online", "Online mode", p["online-mode"] ?? "true", BOOLS, dis)}
-        ${sel("pp-diff", "Dificultad", p["difficulty"] ?? "normal", DIFFICULTIES, dis)}
-        ${sel("pp-mode", "Gamemode", p["gamemode"] ?? "survival", GAMEMODES, dis)}
-        ${sel("pp-pvp", "PVP", p["pvp"] ?? "true", BOOLS, dis)}
-        ${sel("pp-wl", "Whitelist", p["white-list"] ?? "false", BOOLS, dis)}
-        <label>Max jugadores<input id="pp-maxp" type="number" min="1" max="1000" value="${esc(p["max-players"] ?? "10")}" ${dis ? "disabled" : ""} /></label>
-        <label>View distance<input id="pp-vd" type="number" min="2" max="32" value="${esc(p["view-distance"] ?? "10")}" ${dis ? "disabled" : ""} /></label>
-        <label>MOTD<input id="pp-motd" type="text" maxlength="200" value="${esc(p["motd"] ?? "")}" ${dis ? "disabled" : ""} /></label>
-        <label>RAM: <strong id="pp-ram-lbl">${ramMb} MB</strong>
-          <input id="pp-ram" type="range" min="512" max="${hostMaxRam}" step="256" value="${Math.min(ramMb, hostMaxRam)}" ${dis ? "disabled" : ""} /></label>
+        ${field("Puerto", "Por dónde se conectan tus amigos: TU_IP:puerto. Cambialo solo si el 25565 está ocupado.", num("pp-port", "server-port", `min="1" max="65535"`))}
+        ${sel("pp-online", "Online mode", "En true solo entran cuentas premium (originales). En false entra cualquiera, pero se puede usar cualquier nombre.", p["online-mode"] ?? "true", BOOLS, dis)}
+        ${sel("pp-diff", "Dificultad", "Daño de monstruos, hambre y veneno: peaceful, easy, normal o hard.", p["difficulty"] ?? "normal", DIFFICULTIES, dis)}
+        ${sel("pp-mode", "Gamemode", "Modo de juego al entrar: survival, creative, adventure o spectator.", p["gamemode"] ?? "survival", GAMEMODES, dis)}
+        ${sel("pp-pvp", "PVP", "Si los jugadores pueden hacerse daño entre ellos.", p["pvp"] ?? "true", BOOLS, dis)}
+        ${sel("pp-wl", "Whitelist", "En true solo entran los de la lista blanca (se agregan con whitelist add).", p["white-list"] ?? "false", BOOLS, dis)}
+        ${field("Max jugadores", "Cuántos pueden estar a la vez. Más jugadores = más RAM usada.", num("pp-maxp", "max-players", `min="1" max="1000"`))}
+        ${field("View distance", "Qué tan lejos se ve, en chunks. Más alto se ve mejor pero pide más RAM y CPU.", num("pp-vd", "view-distance", `min="2" max="32"`))}
+        ${field("MOTD", "El mensajito bajo el nombre del server en la lista de servidores.", `<input id="pp-motd" type="text" maxlength="200" value="${esc(p["motd"] ?? "")}" ${dis ? "disabled" : ""} />`)}
+        ${field("RAM", "Memoria para este server. 2048 MB alcanza para jugar de a varios.", `<strong id="pp-ram-lbl">${ramMb} MB</strong>
+          <input id="pp-ram" type="range" min="512" max="${hostMaxRam}" step="256" value="${Math.min(ramMb, hostMaxRam)}" ${dis ? "disabled" : ""} />`)}
       </div>
-      <button id="pp-save" type="button" ${dis ? "disabled" : ""}>Guardar</button>
+      <button id="pp-save" type="button" data-tip="Guarda todo. Aplica la próxima vez que arranques." ${dis ? "disabled" : ""}>Guardar</button>
       ${propsMsg ? `<p class="muted">${esc(propsMsg)}</p>` : ""}`;
     const ramInput = tabBody.querySelector<HTMLInputElement>("#pp-ram");
     ramInput?.addEventListener("input", () => {
@@ -231,6 +257,85 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     paint();
   }
 
+  // ---- Historial ----
+  function kindLabel(kind: string): string {
+    switch (kind) {
+      case "crash": return "crashlog";
+      case "rotated": return "rotado";
+      default: return "último";
+    }
+  }
+
+  function fmtDate(ts: number): string {
+    const d = new Date(ts * 1000);
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
+  }
+
+  async function renderHistorial(): Promise<void> {
+    if (histFiles === null && histError === null) {
+      tabBody.innerHTML = `<p class="muted">Cargando archivos…</p>`;
+      try {
+        histFiles = await api.listLogFiles(name);
+        if (histFiles.length > 0 && histSel === null) histSel = histFiles[0].file;
+      } catch (e) {
+        histError = errMsg(e);
+      }
+    }
+    if (histError !== null) {
+      tabBody.innerHTML = `<p class="error">${esc(histError)}</p>`;
+      return;
+    }
+    const files = histFiles ?? [];
+    if (files.length === 0) {
+      tabBody.innerHTML = `<p class="muted">Todavía no hay logs. Arrancá el server una vez para generarlos.</p>`;
+      return;
+    }
+    tabBody.innerHTML = `
+      <div class="hist-layout">
+        <div class="hist-list">
+          ${files
+            .map(
+              (f) => `<button class="hist-item ${f.file === histSel ? "sel" : ""}" data-file="${esc(f.file)}" type="button">
+                <strong>[${kindLabel(f.kind)}]</strong> ${esc(f.file.split("/").pop() ?? f.file)}
+                <span class="muted">${fmtDate(f.modified)} · ${(f.size / 1024).toFixed(0)} KB</span>
+              </button>`,
+            )
+            .join("")}
+        </div>
+        <div id="hist-view" class="console">${histLoading ? "Cargando…" : histLines.map(esc).join("\n")}</div>
+      </div>`;
+    tabBody.querySelectorAll<HTMLButtonElement>("[data-file]").forEach((b) => {
+      b.addEventListener("click", () => {
+        histSel = b.dataset.file ?? null;
+        void loadHistFile();
+      });
+    });
+    if (histSel !== null && histLines.length === 0 && !histLoading) void loadHistFile();
+  }
+
+  async function loadHistFile(): Promise<void> {
+    if (histSel === null) return;
+    histLoading = true;
+    const view = tabBody.querySelector("#hist-view");
+    if (view) view.textContent = "Cargando…";
+    try {
+      histLines = await api.readLogFile(name, histSel, 500);
+    } catch (e) {
+      histLines = [`Error: ${errMsg(e)}`];
+    }
+    histLoading = false;
+    if (tab === "historial") {
+      const v = tabBody.querySelector("#hist-view");
+      if (v) {
+        v.textContent = histLines.join("\n");
+        v.scrollTop = v.scrollHeight;
+      }
+      tabBody.querySelectorAll<HTMLButtonElement>("[data-file]").forEach((b) => {
+        b.classList.toggle("sel", b.dataset.file === histSel);
+      });
+    }
+  }
+
   // ---- Stats en vivo ----
   async function pollStats(): Promise<void> {
     try {
@@ -260,6 +365,9 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
         javaEl.hidden = true;
       } else if (state === "crashed") {
         say("El server crasheó. Mirá el final del log.", true);
+        histFiles = null; // hay crashlog nuevo para ver en Historial
+        histSel = null;
+        histLines = [];
       } else if (state === "stopped") {
         say("Parado.", false);
       }
@@ -317,6 +425,10 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   });
   tabAjustes.addEventListener("click", () => {
     tab = "ajustes";
+    paint();
+  });
+  tabHistorial.addEventListener("click", () => {
+    tab = "historial";
     paint();
   });
 

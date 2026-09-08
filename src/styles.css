@@ -264,6 +264,75 @@ input[type="range"] {
   gap: 0.35rem;
 }
 
+.hist-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 0.75rem;
+}
+
+.hist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.hist-item {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  gap: 0.1rem;
+}
+
+.hist-item.sel {
+  border-color: #396cd8;
+}
+
+.hist-item .muted {
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+#hist-view {
+  height: 46vh;
+}
+
+/* Tooltips con delay: aparecen tras 2s de hover, se van al salir.
+   CSS puro (data-tip), sin JS. */
+[data-tip] {
+  position: relative;
+}
+
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: max-content;
+  max-width: 280px;
+  white-space: normal;
+  background: #111;
+  color: #f6f6f6;
+  font-size: 0.82rem;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 0.45em 0.7em;
+  border-radius: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+  z-index: 50;
+}
+
+[data-tip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 2s;
+}
+
 .console {
   background: #111;
   color: #e8e8e8;

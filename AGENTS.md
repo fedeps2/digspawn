@@ -39,9 +39,9 @@
   (requiere toolchain + webview2 en la máquina build; JUEGO POSTERIOR, no del arranque).
 
 ## Definiciones pendientes (decidir CON Alex, código assumir quieto)
-- Framework frontend confirmado: vanilla JS+CSS salvo contraorden.
-- (Nombre Y DECIDIDO: **Digspawn** — binario `digspawn`. DataDir `%APPDATA%/digspawn/`
-  fijo. Update-check = meta-file GitHub tipo Phone Stories. Ver SPEC.md.)
+- Nada crítico pendiente de código. Nombre **Digspawn** / binario `digspawn`,
+  dataDir `%APPDATA%/digspawn/`, frontend vanilla TS, update-check meta-file GitHub
+  tipo Phone Stories — todo DECIDIDO y en SPEC.md.
 
 ## Cómo comprobar progreso (playbook del agente)
 - `cargo build` exitoso + `npm run tauri dev` levanta la UI → esqueleto ok.

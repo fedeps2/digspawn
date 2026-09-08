@@ -260,9 +260,13 @@ post-creación.
 - **Nota:** JDK (no solo JRE) porque algunos servers/scripts piden javac; tamaño
   extra es aceptable. Si quieren minimizar se baja JRE (`image_type=jre`).
 
-### Arranque del server — flags por default
-- **Todos los servers arrancan con JDK 21 + "Aikar's flags" (G1GC bonito) por
-  default** — el launcher las mete en el command de arranque solo, el amigo
+### Arranque del server — Java por versión + flags por default
+- **Java auto-derivado de la versión MC** (DECIDIDO): jdk8 (MC<1.17), jdk17
+  (1.17–1.20.4), jdk21 (1.20.5+). Nota técnica: Adoptium sin Java 16 (no LTS),
+  MC 1.17 corre con el runtime 17. Runtime por versión:
+  `<dataDir>/runtime/jdk{N}/`. Resolución: bundled correcto → system java si el
+  major coincide → si no, descarga Adoptium portable.
+- **Todos los servers arrancan con "Aikar's flags" (G1GC bonito) por default** — el launcher las mete en el command de arranque solo, el amigo
   nunca las ve. Esas flags las escribió el dev de Paper y son el tune estándar
   para MC server:
   `java -Xms{ram}M -Xmx{ram}M -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200 -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1HeapRegionSize=8M -XX:G1ReservePercent=20 -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15 -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5 -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1 -jar server.jar --nogui`

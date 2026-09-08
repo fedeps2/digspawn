@@ -126,8 +126,8 @@ body {
 
 #view {
   padding: 1.5rem 1.25rem;
-  max-width: 1180px;
-  margin: 0 auto;
+  max-width: none;
+  margin: 0;
 }
 
 /* ---------- Controles base ---------- */
@@ -688,6 +688,7 @@ input[type="range"] {
   gap: 1rem;
   align-items: start;
   min-height: calc(100dvh - 190px);
+  margin-right: -1.25rem;
 }
 
 .card.sel {
@@ -701,7 +702,8 @@ input[type="range"] {
   gap: 0.5rem;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-right: none;
+  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
   padding: 0.9rem;
   align-self: stretch;
 }

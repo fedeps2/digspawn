@@ -892,6 +892,9 @@ button.danger {
   padding-right: 0.6rem;
   position: sticky;
   top: 0.5rem;
+  /* sticky crea un contexto de apilado: sin z-index propio, los tooltips
+     de las pestañas quedan debajo del contenido de la derecha. */
+  z-index: 10;
 }
 
 .sv-main .tabs button {

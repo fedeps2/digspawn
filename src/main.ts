@@ -2,7 +2,8 @@
 
 import "./styles.css";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { api } from "./api";
+import { listen } from "@tauri-apps/api/event";
+import { api, errMsg, type UpdateCheck, type UpdateProgress } from "./api";
 import { renderLibrary, unmountLibrary } from "./library";
 import { openWizard } from "./wizard";
 import { openServer, type ServerTab } from "./server";
@@ -74,18 +75,89 @@ async function checkUpdateOnce(): Promise<void> {
     return;
   }
   if (!c.checked || !c.available) return;
+  showUpdateBanner(c);
+}
+
+// Banner A+: auto-update con un click (descarga verificada + restart) y
+// fallback a descarga manual. Los errores ofrecen rollback si hay backup.
+function showUpdateBanner(c: UpdateCheck): void {
   const b = banner as HTMLElement;
   b.hidden = false;
   b.innerHTML = `
     <div class="update-banner">
       <span>¡Nueva versión ${esc(c.latest)}!${c.required ? " (recomendada)" : ""} ${esc(c.notes)}</span>
-      <button id="update-go" type="button">Descargar</button>
+      <button id="update-auto" type="button">Actualizar y reiniciar</button>
+      <button id="update-manual" type="button" title="Bajar el exe nuevo a mano">Descarga manual</button>
       <button id="update-x" type="button" title="Cerrar">✕</button>
     </div>`;
-  b.querySelector("#update-go")?.addEventListener("click", () => void openUrl(c.url));
+  b.querySelector("#update-manual")?.addEventListener("click", () => void openUrl(c.url));
   b.querySelector("#update-x")?.addEventListener("click", () => {
     b.hidden = true;
   });
+  b.querySelector("#update-auto")?.addEventListener("click", () => void runAutoUpdate(c));
+}
+
+function fmtMb(n: number): string {
+  return (n / 1024 / 1024).toFixed(1);
+}
+
+async function runAutoUpdate(c: UpdateCheck): Promise<void> {
+  const b = banner as HTMLElement;
+  b.innerHTML = `
+    <div class="update-banner">
+      <span id="update-status">Bajando ${esc(c.latest)}…</span>
+      <div class="update-progress"><div id="update-bar"></div></div>
+    </div>`;
+  const status = b.querySelector<HTMLElement>("#update-status")!;
+  const bar = b.querySelector<HTMLElement>("#update-bar")!;
+  const unlisten = await listen<UpdateProgress>("update-progress", (ev) => {
+    const p = ev.payload;
+    if (p.pct != null) {
+      bar.style.width = `${Math.min(100, p.pct).toFixed(0)}%`;
+      status.textContent = p.total != null
+        ? `Bajando ${esc(c.latest)}… ${fmtMb(p.downloaded)} de ${fmtMb(p.total)} MB`
+        : `Bajando ${esc(c.latest)}… ${fmtMb(p.downloaded)} MB`;
+    } else {
+      status.textContent = `Bajando ${esc(c.latest)}… ${fmtMb(p.downloaded)} MB`;
+    }
+  });
+  try {
+    await api.downloadUpdate();
+    status.textContent = "Verificado. Reiniciando…";
+    bar.style.width = "100%";
+    await api.applyUpdate();
+    // applyUpdate reinicia la app: si llegamos acá, falló el restart.
+    throw new Error("No se pudo reiniciar la app: abrila a mano.");
+  } catch (e) {
+    const msg = errMsg(e);
+    let canRollback = false;
+    try {
+      canRollback = await api.rollbackAvailable();
+    } catch {
+      canRollback = false;
+    }
+    b.innerHTML = `
+      <div class="update-banner">
+        <span class="error">No se pudo actualizar: ${esc(msg)} Tu versión sigue intacta.</span>
+        ${canRollback ? `<button id="update-rollback" type="button">Volver a versión anterior</button>` : ""}
+        <button id="update-manual" type="button">Descarga manual</button>
+        <button id="update-x" type="button" title="Cerrar">✕</button>
+      </div>`;
+    b.querySelector("#update-manual")?.addEventListener("click", () => void openUrl(c.url));
+    b.querySelector("#update-x")?.addEventListener("click", () => {
+      b.hidden = true;
+    });
+    b.querySelector("#update-rollback")?.addEventListener("click", async () => {
+      try {
+        await api.rollbackUpdate();
+      } catch (e2) {
+        const s = b.querySelector(".error");
+        if (s) s.textContent = `No se pudo volver atrás: ${errMsg(e2)}`;
+      }
+    });
+  } finally {
+    unlisten();
+  }
 }
 
 let booted = false;

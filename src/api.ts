@@ -101,8 +101,20 @@ export interface UpdateCheck {
   url: string;
   notes: string;
   required: boolean;
+  sha256: string;
   available: boolean;
   checked: boolean;
+}
+
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
+  pct: number | null;
+}
+
+export interface DownloadReport {
+  staged: boolean;
+  total: number | null;
 }
 
 export interface ImportInput {
@@ -251,6 +263,10 @@ export const api = {
   getIcon: (name: string) => invoke<string | null>("get_icon", { name }),
   localIps: () => invoke<string[]>("local_ips"),
   checkUpdate: () => invoke<UpdateCheck>("check_update"),
+  downloadUpdate: () => invoke<DownloadReport>("download_update"),
+  applyUpdate: () => invoke<void>("apply_update"),
+  rollbackAvailable: () => invoke<boolean>("rollback_available"),
+  rollbackUpdate: () => invoke<void>("rollback_update"),
   importServer: (input: ImportInput) => invoke<ServerInfo>("import_server", { input }),
   // TEMPORAL diagnóstico: no await, best-effort.
   debugLog: (msg: string) => invoke<void>("debug_log", { msg }).catch(() => undefined),

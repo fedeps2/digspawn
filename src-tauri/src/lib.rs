@@ -371,6 +371,26 @@ async fn check_update() -> update::UpdateCheck {
 }
 
 #[tauri::command]
+async fn download_update(app: AppHandle) -> Result<update::DownloadReport> {
+    update::download_update(&app).await
+}
+
+#[tauri::command]
+fn apply_update(app: AppHandle) -> Result<()> {
+    update::apply_update(&app)
+}
+
+#[tauri::command]
+fn rollback_available() -> bool {
+    update::rollback_available()
+}
+
+#[tauri::command]
+fn rollback_update(app: AppHandle) -> Result<()> {
+    update::rollback_update(&app)
+}
+
+#[tauri::command]
 fn import_server(app: AppHandle, input: ImportInput) -> Result<ServerInfo> {
     server_manager::import_server(&app, input)
 }
@@ -452,6 +472,10 @@ pub fn run() {
             get_icon,
             local_ips,
             check_update,
+            download_update,
+            apply_update,
+            rollback_available,
+            rollback_update,
             import_server,
             debug_log,
             list_backups,

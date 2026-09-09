@@ -135,6 +135,24 @@ body {
   padding: 0.3em 0.9em;
 }
 
+/* Barra de progreso del auto-update (A+). */
+.update-progress {
+  flex: 1 1 12rem;
+  min-width: 8rem;
+  max-width: 22rem;
+  height: 0.55rem;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.update-progress #update-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent, #7fb069);
+  transition: width 0.2s ease;
+}
+
 #view {
   padding: 1.5rem 1.25rem;
   max-width: none;

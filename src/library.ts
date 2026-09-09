@@ -21,24 +21,41 @@ export interface LibraryHooks {
 const HOLD_MS = 1500;
 const ARM_MS = 5000;
 
-let liveUnlisten: UnlistenFn | null = null;
+let libGen = 0;
+const liveUnlistens = new Set<UnlistenFn>();
 const iconCache = new Map<string, string | null>();
 
 export function unmountLibrary(): void {
-  liveUnlisten?.();
-  liveUnlisten = null;
+  // Invalida renders en vuelo (sube la generación) y desuscribe TODOS los
+  // listeners vivos. Antes había un solo slot: dos showLibrary() concurrentes
+  // pisaban el handle y el primero quedaba fugado, repintando la biblioteca
+  // sobre la vista de detalle ante cada `server-state`.
+  libGen += 1;
+  for (const u of liveUnlistens) {
+    try {
+      u();
+    } catch {
+      // best-effort
+    }
+  }
+  liveUnlistens.clear();
 }
 
 export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Promise<void> {
   unmountLibrary();
+  const myGen = libGen;
+  const isStale = () => myGen !== libGen || view.dataset.mode !== "library";
+  view.dataset.mode = "library";
   view.innerHTML = `<p class="muted">Cargando servers…</p>`;
   let servers: ServerInfo[];
   try {
     servers = await api.listServers();
   } catch (e) {
+    if (isStale()) return;
     view.innerHTML = `<p class="error">No se pudo leer la biblioteca: ${errMsg(e)}</p>`;
     return;
   }
+  if (isStale()) return;
 
   let selected: string | null = null;
   let armed = false;
@@ -52,6 +69,7 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
   const byName = (n: string) => servers.find((s) => s.name === n);
 
   function render(): void {
+    if (isStale()) return;
     const gridHtml = servers.length === 0
       ? `<div class="empty">
           <p>No tenés ningún server todavía.</p>
@@ -209,12 +227,17 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
   }
 
   function arm(): void {
+    if (isStale()) return;
     armed = true;
     armLeft = ARM_MS;
     render();
     const t0 = Date.now();
     window.clearInterval(armTimer);
     armTimer = window.setInterval(() => {
+      if (isStale()) {
+        window.clearInterval(armTimer);
+        return;
+      }
       armLeft = Math.max(0, ARM_MS - (Date.now() - t0));
       const btn = view.querySelector<HTMLButtonElement>("#sb-delete");
       if (btn && armed) btn.textContent = `Mantené para borrar (${(armLeft / 1000).toFixed(1)}s)`;
@@ -227,17 +250,20 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
     armed = false;
     holding = false;
     window.clearInterval(armTimer);
+    if (isStale()) return;
     if (view.querySelector("#sb-delete")) render();
   }
 
   async function paintIcons(): Promise<void> {
     await Promise.all(
       servers.map(async (s) => {
+        if (isStale()) return;
         let url = iconCache.get(s.name);
         if (url === undefined) {
           url = await api.getIcon(s.name).catch(() => null);
           iconCache.set(s.name, url);
         }
+        if (isStale()) return;
         if (!url) return;
         const icon = view.querySelector(`[data-icon="${CSS.escape(s.name)}"]`);
         if (icon) icon.innerHTML = `<img class="avatar" src="${url}" alt="" />`;
@@ -246,7 +272,7 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
   }
 
   async function doStart(force: boolean): Promise<void> {
-    if (!selected || busy) return;
+    if (!selected || busy || isStale()) return;
     busy = true;
     sidebarMsg = { text: force ? "Arrancando…" : "Chequeando memoria…", err: false };
     render();
@@ -279,7 +305,7 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
   }
 
   async function doStop(): Promise<void> {
-    if (!selected || busy) return;
+    if (!selected || busy || isStale()) return;
     busy = true;
     sidebarMsg = { text: "Frenando…", err: false };
     render();
@@ -293,7 +319,7 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
   }
 
   async function doRestart(): Promise<void> {
-    if (!selected || busy) return;
+    if (!selected || busy || isStale()) return;
     busy = true;
     sidebarMsg = { text: "Reiniciando…", err: false };
     render();
@@ -307,12 +333,13 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
   }
 
   async function doDelete(): Promise<void> {
-    if (!selected) return;
+    if (!selected || isStale()) return;
     disarm();
     const name = selected;
     try {
       await api.deleteServer(name);
     } catch (e) {
+      if (isStale()) return;
       sidebarMsg = { text: errMsg(e), err: true };
       render();
       return;
@@ -323,20 +350,29 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
     try {
       servers = await api.listServers();
     } catch (e) {
+      if (isStale()) return;
       view.innerHTML = `<p class="error">No se pudo leer la biblioteca: ${errMsg(e)}</p>`;
       return;
     }
+    if (isStale()) return;
     render();
   }
 
   // Estados en vivo: actualiza sin perder la selección.
-  liveUnlisten = await listen<ServerStateEvent>("server-state", (ev) => {
+  // Ignora eventos si esta instancia quedó obsoleta o la vista ya no es biblioteca.
+  const liveUnlisten = await listen<ServerStateEvent>("server-state", (ev) => {
+    if (myGen !== libGen || view.dataset.mode !== "library") return;
     const s = servers.find((x) => x.name === ev.payload.server);
     if (!s) return;
     s.state = ev.payload.state;
     if (armed) disarm();
     else render();
   }).catch(() => null);
+  if (isStale()) {
+    liveUnlisten?.();
+    return;
+  }
+  if (liveUnlisten) liveUnlistens.add(liveUnlisten);
 
   render();
 }

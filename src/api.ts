@@ -135,6 +135,18 @@ export interface SearchHit {
   game_versions: string[];
 }
 
+export interface GalleryItem {
+  url: string;
+  title: string;
+}
+
+export interface ProjectDetails {
+  project_id: string;
+  title: string;
+  body: string;
+  gallery: GalleryItem[];
+}
+
 export interface InstallReport {
   installed: string[];
   skipped: string[];
@@ -148,6 +160,46 @@ export interface PluginProgress {
   downloaded: number;
   total: number | null;
   pct: number | null;
+}
+
+export interface CrashDiagnosis {
+  cause: string;
+  hint: string;
+}
+
+export interface BackupInfo {
+  file: string;
+  scope: string; // "full" | "world"
+  kind: string; // "manual" | "auto" | "onstart"
+  size: number;
+  modified: number; // unix timestamp
+}
+
+export interface BackupProgress {
+  server: string;
+  file: string;
+  files_done: number;
+  files_total: number;
+  bytes_done: number;
+  bytes_total: number;
+  pct: number | null;
+}
+
+export interface BackupStateEvent {
+  server: string;
+  backing_up: boolean;
+}
+
+export interface BackupConfig {
+  auto_enabled: boolean;
+  auto_hours: number;
+  auto_scope: string; // "full" | "world"
+  keep_count: number;
+  keep_gb: number;
+  on_start_enabled: boolean;
+  on_start_scope: string; // "full" | "world"
+  onstart_keep_count: number;
+  onstart_keep_gb: number;
 }
 
 /** Extrae el mensaje legible de un fallo de `invoke`. */
@@ -175,6 +227,14 @@ export const api = {
   restartServer: (name: string) => invoke<void>("restart_server", { name }),
   sendCommand: (name: string, cmd: string) => invoke<void>("send_command", { name, cmd }),
   readLog: (name: string, max_lines: number) => invoke<string[]>("read_log", { name, maxLines: max_lines }),
+  diagnoseCrash: (name: string) => invoke<CrashDiagnosis | null>("diagnose_crash", { name }),
+  listBackups: (name: string) => invoke<BackupInfo[]>("list_backups", { name }),
+  createBackup: (name: string, scope: string) => invoke<BackupInfo>("create_backup", { name, scope }),
+  restoreBackup: (name: string, file: string) => invoke<void>("restore_backup", { name, file }),
+  deleteBackup: (name: string, file: string) => invoke<void>("delete_backup", { name, file }),
+  isBackingUp: (name: string) => invoke<boolean>("is_backing_up", { name }),
+  getBackupConfig: (name: string) => invoke<BackupConfig>("get_backup_config", { name }),
+  setBackupConfig: (name: string, cfg: BackupConfig) => invoke<BackupConfig>("set_backup_config", { name, cfg }),
   getProperties: (name: string) => invoke<Record<string, string>>("get_properties", { name }),
   setProperties: (name: string, kvs: Record<string, string>) =>
     invoke<void>("set_properties", { name, kvs }),
@@ -198,7 +258,10 @@ export const api = {
     invoke<string>("set_plugin_enabled", { name, file, enabled }),
   getSettings: () => invoke<Settings>("get_settings"),
   setSettings: (settings: Settings) => invoke<Settings>("set_settings", { settings }),
-  searchPlugins: (query: string) => invoke<SearchHit[]>("search_plugins", { query }),
+  searchPlugins: (query: string, category: string | null) =>
+    invoke<SearchHit[]>("search_plugins", { query, category }),
+  pluginDetails: (project_id: string) =>
+    invoke<ProjectDetails>("plugin_details", { projectId: project_id }),
   installPlugin: (server_name: string, project_id: string) =>
     invoke<InstallReport>("install_plugin", { serverName: server_name, projectId: project_id }),
 };

@@ -1,6 +1,8 @@
 // Comandos Tauri del backend (hito 3: biblioteca + creación + procesos).
 // Comandos rápidos / props editables / update-check = hito 4.
 
+pub mod backups;
+pub mod diagnose;
 pub mod errors;
 pub mod java;
 pub mod modrinth;
@@ -12,6 +14,7 @@ pub mod properties;
 pub mod runtime;
 pub mod server_manager;
 pub mod settings;
+pub mod tray;
 pub mod update;
 
 use serde::Serialize;
@@ -81,12 +84,60 @@ async fn delete_server(
             "Frená el server antes de borrarlo.".to_string(),
         ));
     }
+    if app.state::<backups::BackupState>().is_busy(name.trim()) {
+        return Err(ServerError::Busy(
+            "Hay un backup en curso: esperá a que termine para borrar.".to_string(),
+        ));
+    }
     server_manager::delete_server(&app, &name)
 }
 
 #[tauri::command]
 fn detect_java() -> Result<java::JavaInfo> {
     java::detect_java()
+}
+
+#[tauri::command]
+fn list_backups(app: AppHandle, name: String) -> Result<Vec<backups::BackupInfo>> {
+    backups::list_backups(&app, &name)
+}
+
+#[tauri::command]
+async fn create_backup(app: AppHandle, name: String, scope: String) -> Result<backups::BackupInfo> {
+    backups::create_backup(&app, &name, &scope).await
+}
+
+#[tauri::command]
+async fn restore_backup(app: AppHandle, name: String, file: String) -> Result<()> {
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || backups::restore_backup(&app2, &name, &file))
+        .await
+        .map_err(|e| ServerError::Io(format!("Restore interrumpido: {e}")))??;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_backup(app: AppHandle, name: String, file: String) -> Result<()> {
+    backups::delete_backup(&app, &name, &file)
+}
+
+#[tauri::command]
+fn is_backing_up(app: AppHandle, name: String) -> bool {
+    backups::is_backing_up(&app, &name)
+}
+
+#[tauri::command]
+fn get_backup_config(app: AppHandle, name: String) -> Result<server_manager::BackupConfig> {
+    backups::get_backup_config(&app, &name)
+}
+
+#[tauri::command]
+fn set_backup_config(
+    app: AppHandle,
+    name: String,
+    cfg: server_manager::BackupConfig,
+) -> Result<server_manager::BackupConfig> {
+    backups::set_backup_config(&app, &name, cfg)
 }
 
 #[tauri::command]
@@ -127,6 +178,11 @@ async fn send_command(app: AppHandle, name: String, cmd: String) -> Result<()> {
 #[tauri::command]
 fn read_log(app: AppHandle, name: String, max_lines: u32) -> Result<Vec<String>> {
     processes::read_log(&app, &name, max_lines)
+}
+
+#[tauri::command]
+fn diagnose_crash(app: AppHandle, name: String) -> Option<diagnose::Diagnosis> {
+    diagnose::diagnose_crash(&app, &name)
 }
 
 #[tauri::command]
@@ -240,8 +296,13 @@ struct PluginProgress {
 }
 
 #[tauri::command]
-async fn search_plugins(query: String) -> Result<Vec<modrinth::SearchHit>> {
-    modrinth::search(&query).await
+async fn search_plugins(query: String, category: Option<String>) -> Result<Vec<modrinth::SearchHit>> {
+    modrinth::search(&query, category.as_deref()).await
+}
+
+#[tauri::command]
+async fn plugin_details(project_id: String) -> Result<modrinth::ProjectDetails> {
+    modrinth::details(&project_id).await
 }
 
 #[tauri::command]
@@ -285,15 +346,51 @@ fn import_server(app: AppHandle, input: ImportInput) -> Result<ServerInfo> {
 pub fn run() {
     tauri::Builder::default()
         .manage(processes::ProcessState::new())
-        // Una sola instancia: si ya corre, enfoca la ventana existente en
-        // vez de levantar un segundo backend que pelee por los servers.
+        .manage(backups::BackupState::new())
+        // Una sola instancia: si ya corre, muestra la ventana existente
+        // (puede estar escondida en el tray) en vez de levantar un segundo
+        // backend que pelee por los servers.
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.set_focus();
-            }
+            tray::show_main(app);
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // El tray es best-effort: en Linux sin bandeja (ej. GNOME pelado)
+            // puede no existir. Si falla, la app sigue andando sin él.
+            if let Err(e) = tray::build(app.handle()) {
+                eprintln!("tray no disponible: {e}");
+            }
+            // Programador de auto-backups (corre aunque la ventana esté en tray).
+            {
+                let app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    backups::auto_backup_loop(app).await;
+                });
+            }
+            // Huérfanos de sesiones viejas (padre muerto sin cleanup): si no
+            // se matan, retienen lock del mundo + puerto y todo arranque muere.
+            // En background para no frenar la ventana.
+            {
+                let app = app.handle().clone();
+                std::thread::spawn(move || {
+                    for n in processes::reap_orphans(&app) {
+                        eprintln!("proceso huérfano de \"{n}\" frenado al arrancar");
+                    }
+                });
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Cerrar con servers corriendo esconde a tray (no mata por accidente).
+            // Sin nada corriendo, el cierre es normal.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if !window.state::<processes::ProcessState>().running_names().is_empty() {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             list_servers,
             list_versions,
@@ -308,6 +405,7 @@ pub fn run() {
             restart_server,
             send_command,
             read_log,
+            diagnose_crash,
             get_properties,
             set_properties,
             set_ram,
@@ -321,6 +419,13 @@ pub fn run() {
             check_update,
             import_server,
             debug_log,
+            list_backups,
+            create_backup,
+            restore_backup,
+            delete_backup,
+            is_backing_up,
+            get_backup_config,
+            set_backup_config,
             list_plugins,
             import_plugin,
             delete_plugin,
@@ -328,6 +433,7 @@ pub fn run() {
             get_settings,
             set_settings,
             search_plugins,
+            plugin_details,
             install_plugin,
         ])
         .run(tauri::generate_context!())

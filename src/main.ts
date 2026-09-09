@@ -13,24 +13,24 @@ const view = document.querySelector<HTMLElement>("#view");
 const wizardRoot = document.querySelector<HTMLElement>("#wizard-root");
 const settingsBtn = document.querySelector<HTMLButtonElement>("#settings-btn");
 const banner = document.querySelector<HTMLElement>("#update-banner");
+const topUsage = document.querySelector<HTMLElement>("#top-usage");
 
 if (!view || !wizardRoot || !settingsBtn || !banner) {
   throw new Error("Falta el shell base (index.html).");
 }
 
-// TEMPORAL diagnóstico del salto a biblioteca: rastro de navegación + errores.
-// Se saca cuando se encuentre la causa.
-window.addEventListener("error", (ev) => {
-  void api.debugLog(`window.onerror: ${ev.message}`);
-});
-
 async function showLibrary(): Promise<void> {
   const v = view as HTMLElement;
-  void api.debugLog(`showLibrary() stack=${new Error().stack?.split("\n").slice(1, 4).join(" | ") ?? "?"}`);
+  // Marca sincrónica: invalida de inmediato los handlers de la vista server
+  // aunque el render de biblioteca aún esté cargando.
+  v.dataset.mode = "library";
   await renderLibrary(v, {
     onNew: () => openWizard(wizardRoot as HTMLElement, () => void showLibrary()),
     onImport: () => openImport(wizardRoot as HTMLElement, () => void showLibrary()),
     onOpen: (name, tab: ServerTab) => {
+      // Cambio de modo antes del await de openServer: cualquier render de
+      // biblioteca en vuelo ve mode !== "library" y se aborta.
+      v.dataset.mode = "server";
       unmountLibrary();
       void openServer(v, name, () => void showLibrary(), tab);
     },
@@ -38,6 +38,7 @@ async function showLibrary(): Promise<void> {
 }
 
 settingsBtn.addEventListener("click", () => {
+  (view as HTMLElement).dataset.mode = "settings";
   unmountLibrary();
   void openSettings(view as HTMLElement, () => void showLibrary());
 });
@@ -87,9 +88,39 @@ async function checkUpdateOnce(): Promise<void> {
   });
 }
 
-window.addEventListener("DOMContentLoaded", () => {
+let booted = false;
+function boot(): void {
+  if (booted) return;
+  booted = true;
   void showLibrary();
   void checkUpdateOnce();
-});
-void showLibrary();
-void checkUpdateOnce();
+  window.setInterval(() => void pollTopUsage(), 3000);
+  void pollTopUsage();
+}
+
+// Uso agregado de los servers en el topbar (texto) + total de la PC (hover).
+// Best-effort: si falla, se conserva el último valor.
+async function pollTopUsage(): Promise<void> {
+  if (!topUsage) return;
+  let st;
+  try {
+    st = await api.serverStats();
+  } catch {
+    return;
+  }
+  if (st.servers.length === 0) {
+    topUsage.textContent = "";
+    topUsage.removeAttribute("data-tip");
+    return;
+  }
+  const cpu = st.servers.reduce((a, s) => a + s.cpu_pct, 0);
+  const ramGb = st.servers.reduce((a, s) => a + s.ram_mb, 0) / 1024;
+  topUsage.textContent = `CPU ${cpu.toFixed(0)}% · RAM ${ramGb.toFixed(1)} GB`;
+  topUsage.dataset.tip =
+    `Toda tu PC: CPU ${st.host.cpu_pct.toFixed(0)}% · RAM ${(st.host.used_mb / 1024).toFixed(1)} de ${(st.host.total_mb / 1024).toFixed(1)} GB en uso`;
+}
+
+window.addEventListener("DOMContentLoaded", boot);
+// El script se carga con `defer`: el DOM ya está listo, pero si algún día
+// cambia el orden de carga el listener de arriba cubre el arranque.
+boot();

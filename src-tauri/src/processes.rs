@@ -86,6 +86,11 @@ impl ProcessState {
         self.running.lock().expect("lock").contains_key(name)
     }
 
+    /// Nombres de los servers corriendo ahora (tray, salida graceful).
+    pub fn running_names(&self) -> Vec<String> {
+        self.running.lock().expect("lock").keys().cloned().collect()
+    }
+
     /// Saca la entrada solo si es la misma generación (evita cosechar
     /// al proceso nuevo tras un restart). Devuelve si la sacó.
     pub fn remove_if_gen(&self, name: &str, gen: u64) -> bool {
@@ -210,6 +215,11 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
     if procs.is_running(&clean) {
         return Err(ServerError::AlreadyRunning(format!("\"{clean}\" ya está corriendo.")));
     }
+    if app.state::<crate::backups::BackupState>().is_busy(&clean) {
+        return Err(ServerError::Busy(
+            "Hay un backup en curso: esperá a que termine para arrancar.".to_string(),
+        ));
+    }
     let dir = server_path(app, &clean)?;
     let meta = read_meta(&dir)?;
     // Fuente primaria: Fill/Mojang (conocen versionados nuevos como 26.x).
@@ -264,6 +274,27 @@ pub async fn start_server(app: &AppHandle, name: &str) -> Result<()> {
         );
     }
     emit_state(app, &clean, STATE_STARTING);
+
+    // Backup al arrancar (si está prendido): en background para no frenar
+    // el arranque; con demora corta para que el boot termine de escribir.
+    // Sale marcado como auto (entra en retención) y respeta el lock.
+    {
+        let app_b = app.clone();
+        let name_b = clean.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(15)).await;
+            let dir = match server_path(&app_b, &name_b) {
+                Ok(d) => d,
+                Err(_) => return,
+            };
+            let scope = match read_meta(&dir) {
+                Ok(m) if m.backup.on_start_enabled => m.backup.on_start_scope.clone(),
+                _ => return,
+            };
+            let _ =
+                crate::backups::create_backup_with_kind(&app_b, &name_b, &scope, "onstart").await;
+        });
+    }
 
     // Lectores (no tocan el mapa).
     let (app_o, name_o) = (app.clone(), clean.clone());
@@ -418,6 +449,81 @@ pub async fn restart_server(app: &AppHandle, name: &str) -> Result<()> {
         Ok(()) | Err(ServerError::NotRunning(_)) => start_server(app, name).await,
         Err(e) => Err(e),
     }
+}
+
+/// Frena graceful todos los servers corriendo (salida desde el tray).
+/// Best-effort por server: sigue con los demás aunque uno falle.
+pub async fn stop_all(app: &AppHandle) {
+    for n in app.state::<ProcessState>().running_names() {
+        let _ = stop_server(app, &n).await;
+    }
+}
+
+/// ¿Este proceso es un server nuestro huérfano? (cmdline con server.jar y
+/// cwd dentro de servers/). Devuelve el nombre del server.
+/// Pura y testeable: el escaneo real vive en `reap_orphans`.
+fn orphan_server_name(cmdline: &str, cwd: &str, servers_dir: &str) -> Option<String> {
+    if !cmdline.contains("server.jar") {
+        return None;
+    }
+    let cwd = cwd.trim_end_matches('/');
+    let base = servers_dir.trim_end_matches('/');
+    let rest = cwd.strip_prefix(base)?.trim_start_matches('/');
+    if rest.is_empty() {
+        return None;
+    }
+    let name = rest.split('/').next()?;
+    if name.is_empty() || name.contains("..") {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// Mata javas huérfanos de nuestros servers (padre muerto sin cleanup:
+/// el lock del mundo y el puerto quedan tomados y todo arranque nuevo
+/// muere con DirectoryLock). TERM, espera, KILL a los que queden.
+/// Devuelve los nombres frenados. Bloqueante (~5s): llamar en background.
+pub fn reap_orphans(app: &AppHandle) -> Vec<String> {
+    let servers_dir = match server_manager::servers_dir(app) {
+        Ok(d) => d,
+        Err(_) => return vec![],
+    };
+    let prefix = servers_dir.to_string_lossy().into_owned();
+    let me = sysinfo::Pid::from_u32(std::process::id());
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::All, false);
+    let mut found = vec![];
+    for (pid, p) in sys.processes() {
+        if *pid == me {
+            continue;
+        }
+        let cmd = p.cmd().iter().map(|s| s.to_string_lossy()).collect::<Vec<_>>().join(" ");
+        let cwd = p.cwd().map(|c| c.to_string_lossy().into_owned()).unwrap_or_default();
+        if let Some(name) = orphan_server_name(&cmd, &cwd, &prefix) {
+            let _ = p.kill_with(sysinfo::Signal::Term);
+            found.push(name);
+        }
+    }
+    if found.is_empty() {
+        return found;
+    }
+    std::thread::sleep(std::time::Duration::from_secs(5));
+    // Remate a los que ignoraron el TERM (mismo criterio, mapa fresco).
+    let mut sys2 = sysinfo::System::new();
+    sys2.refresh_processes(sysinfo::ProcessesToUpdate::All, false);
+    for (pid, p) in sys2.processes() {
+        if *pid == me {
+            continue;
+        }
+        let cmd = p.cmd().iter().map(|s| s.to_string_lossy()).collect::<Vec<_>>().join(" ");
+        let cwd = p.cwd().map(|c| c.to_string_lossy().into_owned()).unwrap_or_default();
+        if orphan_server_name(&cmd, &cwd, &prefix).is_some() {
+            let _ = p.kill();
+        }
+    }
+    found.sort();
+    found.dedup();
+    found
 }
 
 /// Apagado forzado (kill inmediato, último recurso: puede dañar guardados).
@@ -754,6 +860,68 @@ pub fn evaluate_preflight(
     Preflight { can_start: true, free_mb, needed_mb, warnings }
 }
 
+/// Puertos que un server quiere bindear, según sus props.
+/// Siempre el puerto de juego; query/RCON solo si están prendidos.
+/// Claves ausentes o inválidas (archivo tocado a mano) se saltean.
+fn wanted_ports(props: &std::collections::HashMap<String, String>) -> Vec<(&'static str, u16)> {
+    let mut out = vec![];
+    let port = props.get("server-port").and_then(|s| s.parse::<u16>().ok()).filter(|p| *p != 0);
+    if let Some(p) = port {
+        out.push(("juego", p));
+    }
+    if props.get("enable-query").is_some_and(|s| s == "true") {
+        if let Some(p) = props.get("query.port").and_then(|s| s.parse::<u16>().ok()).filter(|p| *p != 0) {
+            out.push(("query", p));
+        }
+    }
+    if props.get("enable-rcon").is_some_and(|s| s == "true") {
+        if let Some(p) = props.get("rcon.port").and_then(|s| s.parse::<u16>().ok()).filter(|p| *p != 0) {
+            out.push(("RCON", p));
+        }
+    }
+    out
+}
+
+/// Lógica pura del chequeo de puertos (testeable sin bindear de verdad).
+/// `own`: (etiqueta, puerto) que quiere este server.
+/// `others`: (server, etiqueta, puerto) de los demás corriendo.
+/// `busy`: puertos que el SO reportó ocupados (bind de prueba fallido).
+pub fn evaluate_port_warnings(
+    own_name: &str,
+    own: &[(&str, u16)],
+    others: &[(String, String, u16)],
+    busy: &[u16],
+) -> Vec<String> {
+    let mut warnings = vec![];
+    for (i, (label, port)) in own.iter().enumerate() {
+        for (other_label, other_port) in own.iter().skip(i + 1) {
+            if other_port == port {
+                warnings.push(format!(
+                    "Tenés el mismo puerto {port} en {label} y {other_label}. \
+                    El server va a crashear al bindear: usá puertos distintos en Ajustes."
+                ));
+            }
+        }
+        for (other, other_label, other_port) in others {
+            if other != own_name && other_port == port {
+                warnings.push(format!(
+                    "El puerto {port} ({label}) ya lo está usando «{other}» ({other_label}), que está corriendo. \
+                    Si arrancás igual, este server va a crashear al bindear. \
+                    Cambiá el puerto en Ajustes o frená el otro server."
+                ));
+            }
+        }
+        if busy.contains(port) {
+            warnings.push(format!(
+                "El puerto {port} ({label}) está ocupado por otro programa. \
+                Si arrancás igual, el server va a crashear al bindear. \
+                Revisá el puerto en Ajustes."
+            ));
+        }
+    }
+    warnings
+}
+
 /// Chequeo antes de arrancar: ¿alcanza la memoria?
 /// No bloquea (el aviso con confirmación vive en la UI); solo informa.
 pub fn preflight(app: &AppHandle, name: &str) -> Result<Preflight> {
@@ -773,15 +941,39 @@ pub fn preflight(app: &AppHandle, name: &str) -> Result<Preflight> {
     };
     let mut assigned_running_mb: u64 = 0;
     let base = server_manager::servers_dir(app)?;
-    for other in others {
-        let raw = std::fs::read_to_string(base.join(&other).join(SIDECAR));
+    for other in &others {
+        let raw = std::fs::read_to_string(base.join(other).join(SIDECAR));
         if let Ok(raw) = raw {
             if let Ok(m) = serde_json::from_str::<ServerMeta>(&raw) {
                 assigned_running_mb += m.ram_mb;
             }
         }
     }
-    Ok(evaluate_preflight(total_mb, used_mb, assigned_running_mb, meta.ram_mb))
+    let mut pf = evaluate_preflight(total_mb, used_mb, assigned_running_mb, meta.ram_mb);
+    // Puertos: colisión con otros corriendo + bind de prueba contra el SO.
+    // Best-effort: si no se puede leer una prop o bindear, ese chequeo se saltea.
+    let own_props = get_properties(app, &clean).unwrap_or_default();
+    let own_ports = wanted_ports(&own_props);
+    let mut other_ports: Vec<(String, String, u16)> = vec![];
+    for other in &others {
+        if let Ok(props) = get_properties(app, other) {
+            for (label, port) in wanted_ports(&props) {
+                other_ports.push((other.clone(), label.to_string(), port));
+            }
+        }
+    }
+    let mut busy: Vec<u16> = vec![];
+    for (_, port) in &own_ports {
+        // Bind efímero en todas las interfaces: si el SO dice "en uso",
+        // el server va a crashear al arrancar con ese puerto.
+        match std::net::TcpListener::bind(("0.0.0.0", *port)) {
+            Ok(l) => drop(l),
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => busy.push(*port),
+            Err(_) => {}
+        }
+    }
+    pf.warnings.extend(evaluate_port_warnings(&clean, &own_ports, &other_ports, &busy));
+    Ok(pf)
 }
 
 #[cfg(test)]
@@ -802,6 +994,39 @@ mod tests {
     fn launch_args_min_ram() {
         let a = launch_args(512);
         assert_eq!(a[0], "-Xms512M");
+    }
+
+    #[test]
+    fn orphan_matcher_spots_our_servers_only() {
+        let base = "/home/alex/.local/share/com.digspawn.app/servers";
+        // Nuestro: jar + cwd dentro de servers/.
+        assert_eq!(
+            orphan_server_name(
+                "java -Xms2048M -jar server.jar --nogui",
+                "/home/alex/.local/share/com.digspawn.app/servers/test",
+                base
+            ),
+            Some("test".to_string())
+        );
+        // Otro java (penpot, ide...): sin server.jar no se toca.
+        assert_eq!(
+            orphan_server_name("java -jar penpot.jar", format!("{base}/test").as_str(), base),
+            None
+        );
+        // Java ajeno fuera de nuestra carpeta: no se toca aunque use server.jar.
+        assert_eq!(
+            orphan_server_name(
+                "java -jar server.jar --nogui",
+                "/home/alex/manual/miserver",
+                base
+            ),
+            None
+        );
+        // La carpeta base sola no es un server.
+        assert_eq!(
+            orphan_server_name("java -jar server.jar --nogui", base, base),
+            None
+        );
     }
 
     #[test]
@@ -826,6 +1051,60 @@ mod tests {
         // Otro server corriendo con 4GB asignados deja sin lugar al nuevo.
         let p = evaluate_preflight(8000, 2000, 4096, 2048);
         assert_eq!(p.warnings.len(), 1);
+    }
+
+    fn props(pairs: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn ports_clean_when_free() {
+        let own = wanted_ports(&props(&[("server-port", "25565")]));
+        assert_eq!(own, vec![("juego", 25565)]);
+        let w = evaluate_port_warnings("a", &own, &[], &[]);
+        assert!(w.is_empty());
+    }
+
+    #[test]
+    fn ports_warn_on_collision_with_running() {
+        let own = wanted_ports(&props(&[("server-port", "25565")]));
+        let others = vec![("otro".to_string(), "juego".to_string(), 25565)];
+        let w = evaluate_port_warnings("mio", &own, &others, &[]);
+        assert_eq!(w.len(), 1);
+        assert!(w[0].contains("otro"));
+    }
+
+    #[test]
+    fn ports_warn_when_os_reports_busy() {
+        let own = wanted_ports(&props(&[("server-port", "25565")]));
+        let w = evaluate_port_warnings("mio", &own, &[], &[25565]);
+        assert_eq!(w.len(), 1);
+        assert!(w[0].contains("ocupado"));
+    }
+
+    #[test]
+    fn ports_warn_on_self_conflict_and_extra_ports() {
+        let own = wanted_ports(&props(&[
+            ("server-port", "25565"),
+            ("enable-query", "true"),
+            ("query.port", "25565"),
+            ("enable-rcon", "true"),
+            ("rcon.port", "25575"),
+        ]));
+        assert_eq!(own.len(), 3);
+        let w = evaluate_port_warnings("mio", &own, &[], &[]);
+        assert_eq!(w.len(), 1); // juego y query comparten puerto
+        assert!(w[0].contains("mismo puerto"));
+    }
+
+    #[test]
+    fn ports_skip_missing_or_garbage() {
+        // Server sin arrancar nunca: solo defaults de Digspawn.
+        let own = wanted_ports(&props(&[("server-port", "25565")]));
+        assert_eq!(own.len(), 1);
+        // Puerto inválido (tocado a mano) se saltea, no rompe el preflight.
+        let own = wanted_ports(&props(&[("server-port", "abc"), ("enable-query", "true")]));
+        assert!(own.is_empty());
     }
 
     #[test]

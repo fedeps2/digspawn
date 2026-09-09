@@ -110,6 +110,16 @@ body {
   gap: 0.5rem;
 }
 
+/* Uso de los servers en el topbar (el hover muestra el total de la PC). */
+.top-usage {
+  font-size: 0.85rem;
+  align-self: center;
+  white-space: nowrap;
+}
+.top-usage:empty {
+  display: none;
+}
+
 /* ---------- Update banner ---------- */
 .update-banner {
   display: flex;
@@ -154,6 +164,14 @@ button:hover {
   border-color: var(--border-strong);
 }
 
+/* Altura pareja: sin esto el select con appearance:none pierde las métricas
+   nativas y queda más bajo ("achatado") que los inputs vecinos. */
+input:not([type="range"]):not([type="checkbox"]):not([type="file"]),
+select {
+  line-height: 1.5;
+  min-height: calc(1.5em + 1.1em + 2px);
+}
+
 input:focus-visible,
 select:focus-visible,
 button:focus-visible {
@@ -171,6 +189,38 @@ button:active:not(:disabled) {
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+input:disabled,
+select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- Selects: misma superficie que inputs + popup oscuro ---------- */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  box-sizing: border-box;
+  padding-right: 2.2em;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b97a8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.8em center;
+  background-size: 0.7em auto;
+}
+select:hover {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23e6edf3' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+/* El popup nativo (la lista abierta) en WebKitGTK ignora el fondo del
+   select: sin esto las opciones salen claras y desentonan con el dark. */
+option,
+optgroup {
+  background-color: var(--surface-2);
+  color: var(--text);
+}
+.props-grid select,
+.wizard-body select {
+  width: 100%;
 }
 
 a {
@@ -361,6 +411,12 @@ a:hover {
   min-width: 100px;
   padding: 0.35em 0.7em;
   box-shadow: none;
+  min-height: calc(1.5em + 0.7em + 2px);
+}
+/* El padding compacto de arriba pisa el padding-right de la flecha custom:
+   se repone acá para que el chevron no tape el texto. */
+.quick-inputs select {
+  padding-right: 2em;
 }
 
 .players {
@@ -376,6 +432,13 @@ a:hover {
   gap: 0.75rem;
   margin-bottom: 0.75rem;
   flex-wrap: wrap;
+}
+.plug-actions label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 .plug-drop {
   border: 2px dashed var(--border-strong);
@@ -395,33 +458,97 @@ a:hover {
   color: var(--text);
 }
 
-/* ---------- Iconos (propiedades) ---------- */
-.icon-row {
+/* Chips de categoría del buscador. */
+.chips {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
+  gap: 0.4rem;
   flex-wrap: wrap;
 }
-.icon-row img {
-  width: 46px;
-  height: 46px;
-  object-fit: cover;
-  border-radius: 9px;
-  background: var(--surface);
+.chips button {
+  padding: 0.3em 0.8em;
+  font-size: 0.85rem;
+  box-shadow: none;
 }
-.icon-row label {
+.chips button.sel {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* Descripción truncada a 2 líneas (el detalle completo va en el modal). */
+.card.plug {
   cursor: pointer;
+}
+.card.plug .plug-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.85rem;
+}
+
+/* Modal de detalle de plugin. */
+.plug-modal {
+  width: min(620px, 94vw);
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.plug-head {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+}
+.plug-head .card-body {
+  flex: 1;
+}
+.card-icon.big img {
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+}
+.card-icon.big {
+  font-size: 2.6rem;
+}
+.plug-gal {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  padding-bottom: 0.25rem;
+}
+.plug-gal img {
+  height: 150px;
+  width: auto;
+  max-width: 280px;
+  object-fit: cover;
   border-radius: var(--radius);
   border: 1px solid var(--border);
-  padding: 0.5em 1em;
-  background-color: var(--surface-2);
-  box-shadow: var(--shadow-1);
-  transition: border-color 0.16s ease, background-color 0.16s ease;
+  background: var(--surface);
+  flex: none;
 }
-.icon-row label:hover {
+.plug-long {
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  padding-top: 0.6rem;
+  margin-top: 0.6rem;
+  max-height: 30vh;
+  overflow-y: auto;
+}
+
+/* ---------- Icono del server (el avatar del header es el botón) ---------- */
+#sv-avatar.clickable {
+  cursor: pointer;
+  border-radius: 50%;
+}
+#sv-avatar.clickable:hover .avatar,
+#sv-avatar.clickable:focus-visible .avatar {
   border-color: var(--accent);
-  background-color: var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+#sv-avatar.clickable:focus-visible {
+  outline: none;
 }
 
 /* ---------- Badges / estado ---------- */
@@ -713,6 +840,21 @@ button.danger {
 .sv-main #sv-tab-body {
   min-width: 0;
 }
+
+/* Sub-pestañas dentro de una pestaña (plugins): siempre en fila. */
+.sv-main .tabs.sub {
+  flex-direction: row;
+  flex-wrap: wrap;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+  padding-right: 0;
+  padding-bottom: 0.6rem;
+  margin-bottom: 0.75rem;
+  position: static;
+}
+.sv-main .tabs.sub button {
+  width: auto;
+}
 .tabs button {
   background: transparent;
   border: 1px solid transparent;
@@ -743,6 +885,134 @@ button.danger {
   flex-direction: column;
   gap: 0.35rem;
   font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* Ajustes del server: lista vertical, un item por fila. */
+.props-grid.props-list {
+  grid-template-columns: 1fr;
+  gap: 0.9rem;
+  max-width: 560px;
+}
+
+.props-sect {
+  margin: 0.25rem 0 0;
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+/* Dropdowns mini pero cómodos: no estiran todo el ancho. */
+.props-list select {
+  width: auto;
+  min-width: 170px;
+  max-width: 100%;
+  padding-top: 0.4em;
+  padding-bottom: 0.4em;
+  min-height: calc(1.5em + 0.8em + 2px);
+  font-size: 0.9rem;
+}
+
+/* Modo avanzado: bloque plegable. */
+details.adv {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 0.7rem 0.9rem;
+  margin-top: 0.25rem;
+}
+details.adv > summary {
+  cursor: pointer;
+  font-weight: 650;
+  font-size: 0.95rem;
+  list-style-position: inside;
+}
+details.adv > summary:hover {
+  color: var(--accent-strong);
+}
+details.adv h4 {
+  margin: 0.9rem 0 0;
+  font-size: 0.88rem;
+  font-weight: 650;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.adv-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 0.6rem;
+}
+.adv-body label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* Automáticos de backup: grilla nombre → control, filas parejas. */
+.bk-form {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.6rem 0.9rem;
+  align-items: center;
+  max-width: 600px;
+  margin-bottom: 0.75rem;
+}
+.bk-form .span {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.bk-name {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.bk-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.bk-ctl {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  color: var(--muted);
+  min-width: 0;
+}
+.bk-ctl input[type="number"] {
+  width: 5.5em;
+}
+.bk-ctl select {
+  width: auto;
+  min-width: 0;
+}
+.row-btns {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* Modal de alcance de backup. */
+.bk-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.bk-pick button {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.bk-pick button span {
+  font-weight: 400;
+  font-size: 0.85rem;
   color: var(--muted);
 }
 
@@ -987,4 +1257,17 @@ button.danger {
 .warn-box p {
   margin: 0;
   font-size: 0.85rem;
+}
+
+/* Diagnóstico de crash: causa probable + sugerencia. */
+.crash-box {
+  border: 1px solid rgba(240, 97, 110, 0.45);
+  border-radius: var(--radius);
+  background: rgba(240, 97, 110, 0.08);
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.6rem;
+}
+.crash-box p {
+  margin: 0.15rem 0;
+  font-size: 0.88rem;
 }

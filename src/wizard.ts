@@ -108,7 +108,7 @@ export function openWizard(root: HTMLElement, onDone: () => void): void {
           ${st.detectedJava
             ? `<p>Detectado en tu sistema: <strong>Java ${st.detectedJava.version}</strong> <span class="muted">${esc(st.detectedJava.path)}</span></p>`
             : `<p class="error">${esc(st.javaNote ?? "Buscando Java…")}</p>`}
-          <p class="muted">En este hito solo se detecta; el autoinstall portable llega después.</p>`;
+          <p class="muted">Al arrancar por primera vez, Digspawn descarga solo el Java portable que necesita (una sola vez, ~200MB). No tenés que instalar nada.</p>`;
       case 5:
         return `
           <label data-tip="Memoria para este server. 2048 MB alcanza para jugar de a varios.">RAM: <strong>${st.ram} MB</strong>

@@ -16,6 +16,8 @@ pub enum ServerError {
     JavaNotFound(String),
     AlreadyRunning(String),
     NotRunning(String),
+    /// Operación bloqueada por otra en curso (backup, restore...).
+    Busy(String),
     Io(String),
 }
 
@@ -33,6 +35,7 @@ impl std::fmt::Display for ServerError {
             ServerError::JavaNotFound(m) => ("JavaNotFound", m),
             ServerError::AlreadyRunning(m) => ("AlreadyRunning", m),
             ServerError::NotRunning(m) => ("NotRunning", m),
+            ServerError::Busy(m) => ("Busy", m),
             ServerError::Io(m) => ("Io", m),
         };
         write!(f, "{kind}: {message}")
@@ -47,6 +50,12 @@ impl From<std::io::Error> for ServerError {
 
 impl From<serde_json::Error> for ServerError {
     fn from(e: serde_json::Error) -> Self {
+        ServerError::Io(e.to_string())
+    }
+}
+
+impl From<zip::result::ZipError> for ServerError {
+    fn from(e: zip::result::ZipError) -> Self {
         ServerError::Io(e.to_string())
     }
 }

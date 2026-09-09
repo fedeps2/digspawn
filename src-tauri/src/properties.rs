@@ -7,11 +7,11 @@ use std::path::Path;
 
 use crate::errors::{Result, ServerError};
 
-/// Claves editables del hito 4 (set del SPEC) con su validación.
+/// Claves editables (set básico del SPEC + sección Avanzado) con su validación.
 pub fn validate(key: &str, value: &str) -> Result<String> {
     let v = value.trim().to_string();
     match key {
-        "server-port" => {
+        "server-port" | "query.port" | "rcon.port" => {
             let p: u16 = v
                 .parse()
                 .map_err(|_| ServerError::InvalidName("Puerto inválido (1–65535).".to_string()))?;
@@ -48,7 +48,9 @@ pub fn validate(key: &str, value: &str) -> Result<String> {
                 "gamemode: survival, creative, adventure o spectator.".to_string(),
             )),
         },
-        "online-mode" | "pvp" | "white-list" => match v.to_lowercase().as_str() {
+        "online-mode" | "pvp" | "white-list" | "enable-command-block" | "allow-flight"
+        | "allow-nether" | "hardcore" | "enable-query" | "enable-rcon" | "broadcast-rcon-to-ops"
+        | "broadcast-console-to-ops" | "sync-chunk-writes" => match v.to_lowercase().as_str() {
             "true" | "false" => Ok(v.to_lowercase()),
             _ => Err(ServerError::InvalidName(format!("{key} debe ser true o false."))),
         },
@@ -66,6 +68,39 @@ pub fn validate(key: &str, value: &str) -> Result<String> {
             v.parse::<std::net::IpAddr>()
                 .map(|ip| ip.to_string())
                 .map_err(|_| ServerError::InvalidName("IP inválida (ej: 192.168.1.10).".to_string()))
+        }
+        // ---- Sección Avanzado (claves que casi nunca hay que tocar) ----
+        // Texto libre: vacío = default del server (seed aleatoria, sin password...).
+        "level-seed" | "generator-settings" | "rcon.password" => Ok(v),
+        "level-name" | "level-type" => {
+            if v.is_empty() {
+                return Err(ServerError::InvalidName(format!("{key} no puede estar vacío.")));
+            }
+            Ok(v)
+        }
+        "spawn-protection" => {
+            let n: u32 = v
+                .parse()
+                .map_err(|_| ServerError::InvalidName("spawn-protection debe ser un número ≥ 0.".to_string()))?;
+            Ok(n.to_string())
+        }
+        "simulation-distance" => {
+            let n: i32 = v
+                .parse()
+                .map_err(|_| ServerError::InvalidName("simulation-distance debe ser un número (2–32).".to_string()))?;
+            if n < 2 || n > 32 {
+                return Err(ServerError::InvalidName("simulation-distance debe estar entre 2 y 32.".to_string()));
+            }
+            Ok(n.to_string())
+        }
+        "max-tick-time" => {
+            let n: i64 = v
+                .parse()
+                .map_err(|_| ServerError::InvalidName("max-tick-time debe ser un número ≥ -1.".to_string()))?;
+            if n < -1 {
+                return Err(ServerError::InvalidName("max-tick-time debe ser -1 o mayor.".to_string()));
+            }
+            Ok(n.to_string())
         }
         _ => Err(ServerError::InvalidName(format!("Propiedad no editable: {key}."))),
     }
@@ -203,6 +238,29 @@ mod tests {
         assert!(validate("view-distance", "64").is_err());
         assert!(validate("motd", "").is_err());
         assert!(validate("seed-cualquiera", "x").is_err());
+        // Sección Avanzado.
+        assert!(validate("query.port", "25565").is_ok());
+        assert!(validate("query.port", "0").is_err());
+        assert!(validate("rcon.port", "25575").is_ok());
+        assert!(validate("enable-rcon", "TRUE").is_ok());
+        assert!(validate("allow-flight", "si").is_err());
+        assert!(validate("allow-nether", "true").is_ok());
+        assert!(validate("allow-nether", "quizás").is_err());
+        assert!(validate("hardcore", "false").is_ok());
+        assert!(validate("hardcore", "si").is_err());
+        assert!(validate("rcon.password", "").is_ok());
+        assert!(validate("level-seed", "").is_ok());
+        assert!(validate("level-seed", " portals ").is_ok());
+        assert!(validate("level-name", "").is_err());
+        assert!(validate("level-name", "world").is_ok());
+        assert!(validate("level-type", "").is_err());
+        assert!(validate("spawn-protection", "16").is_ok());
+        assert!(validate("spawn-protection", "-1").is_err());
+        assert!(validate("simulation-distance", "10").is_ok());
+        assert!(validate("simulation-distance", "64").is_err());
+        assert!(validate("max-tick-time", "60000").is_ok());
+        assert!(validate("max-tick-time", "-1").is_ok());
+        assert!(validate("max-tick-time", "-2").is_err());
         assert_eq!(validate("server-ip", "").unwrap(), "");
         assert_eq!(validate("server-ip", "192.168.1.10").unwrap(), "192.168.1.10");
         assert_eq!(validate("server-ip", " 10.0.0.5 ").unwrap(), "10.0.0.5");

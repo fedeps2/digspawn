@@ -60,17 +60,16 @@ struct SearchHitRaw {
 /// Busca plugins. Facet por loaders (OR) + verificación cliente.
 /// NO se filtra por project_type: populares como LuckPerms figuran como
 /// "mod" con loaders paper/bukkit/spigot (caza de Hermes).
-pub async fn search(query: &str) -> Result<Vec<SearchHit>> {
+/// Query vacía = explorar: devuelve los más descargados (para cuando no
+/// sabés qué buscar). `category` = slug de Modrinth (economy, minigame...).
+pub async fn search(query: &str, category: Option<&str>) -> Result<Vec<SearchHit>> {
     let q = query.trim();
-    if q.is_empty() {
-        return Err(ServerError::InvalidName("Escribí algo para buscar.".to_string()));
-    }
     // Facets: OR de loaders dentro de un array (AND entre arrays).
-    let facets = BriefFacets::loaders();
+    let facets = BriefFacets::for_search(category);
     let resp = client()
         .map_err(|e| ServerError::VersionsFailed(format!("Modrinth: {e}")))?
         .get(format!("{BASE}/search"))
-        .query(&[("query", q), ("limit", "25"), ("facets", &facets)])
+        .query(&[("query", q), ("limit", "25"), ("facets", &facets), ("index", result_order(q))])
         .send()
         .await
         .map_err(|e| ServerError::VersionsFailed(format!("Modrinth: no se pudo buscar: {e}")))?;
@@ -100,18 +99,132 @@ pub async fn search(query: &str) -> Result<Vec<SearchHit>> {
         .collect())
 }
 
-struct BriefFacets;
+/// Orden de Modrinth: con texto manda relevancia; vacío = más descargados.
+fn result_order(query: &str) -> &'static str {
+    if query.trim().is_empty() {
+        "downloads"
+    } else {
+        "relevance"
+    }
+}
 
+// ---------------------------------------------------------------------------
+// Detalle de proyecto (modal): descripción larga + galería.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GalleryItem {
+    pub url: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectDetails {
+    pub project_id: String,
+    pub title: String,
+    pub body: String,
+    pub gallery: Vec<GalleryItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectRaw {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    gallery: Vec<GalleryRaw>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GalleryRaw {
+    #[serde(default)]
+    url: String,
+    #[serde(default)]
+    title: String,
+}
+
+/// Detalle para el modal. Galería topada (las imágenes pesan; se cargan
+/// solo al abrir y se liberan al cerrar).
+pub async fn details(project_id: &str) -> Result<ProjectDetails> {
+    const MAX_IMAGES: usize = 8;
+    let id = project_id.trim();
+    if id.is_empty() {
+        return Err(ServerError::InvalidName("Proyecto vacío.".to_string()));
+    }
+    let resp = client()
+        .map_err(|e| ServerError::VersionsFailed(format!("Modrinth: {e}")))?
+        .get(format!("{BASE}/project/{id}"))
+        .send()
+        .await
+        .map_err(|e| ServerError::VersionsFailed(format!("Modrinth: no se pudo traer el detalle: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(ServerError::VersionsFailed(format!(
+            "Modrinth respondió {}",
+            resp.status()
+        )));
+    }
+    let raw: ProjectRaw = resp
+        .json()
+        .await
+        .map_err(|e| ServerError::VersionsFailed(format!("Modrinth: respuesta inválida: {e}")))?;
+    // La API ya trae las destacadas primero; tope duro (las imágenes pesan
+    // y el modal las carga solo al abrir).
+    let gallery: Vec<GalleryItem> = raw
+        .gallery
+        .into_iter()
+        .filter(|g| !g.url.is_empty())
+        .take(MAX_IMAGES)
+        .map(|g| GalleryItem { url: g.url, title: g.title })
+        .collect();
+    Ok(ProjectDetails {
+        project_id: raw.id,
+        title: raw.title,
+        body: raw.body,
+        gallery,
+    })
+}
+
+struct BriefFacets;
 impl BriefFacets {
-    fn loaders() -> String {
-        // [["categories:paper","categories:spigot","categories:bukkit"]]
-        // (OR adentro, AND entre arrays de afuera).
-        let inner = PAPER_LOADERS
+    fn loaders_inner() -> String {
+        // "categories:paper","categories:spigot","categories:bukkit"
+        PAPER_LOADERS
             .iter()
             .map(|l| format!("\"categories:{l}\""))
             .collect::<Vec<_>>()
-            .join(",");
-        format!("[[{inner}]]")
+            .join(",")
+    }
+
+    fn loaders() -> String {
+        // [["categories:paper","categories:spigot","categories:bukkit"]]
+        // (OR adentro, AND entre arrays de afuera).
+        format!("[[{}]]", Self::loaders_inner())
+    }
+
+    /// Facets de búsqueda: loaders AND categoría opcional.
+    fn for_search(category: Option<&str>) -> String {
+        let cat = category.map(str::trim).filter(|c| !c.is_empty()).unwrap_or("");
+        // Whitelist chica de slugs válidos (un slug raro devuelve vacío).
+        const VALID: &[&str] = &[
+            "adventure",
+            "economy",
+            "library",
+            "magic",
+            "management",
+            "minigame",
+            "social",
+            "technology",
+            "utility",
+            "misc",
+        ];
+        if VALID.contains(&cat) {
+            format!("[[{}],[\"categories:{cat}\"]]", Self::loaders_inner())
+        } else {
+            Self::loaders()
+        }
     }
 }
 
@@ -434,6 +547,39 @@ mod tests {
         assert!(f.starts_with("[[") && f.ends_with("]]"));
     }
 
+    #[test]
+    fn empty_query_sorts_by_downloads() {
+        assert_eq!(result_order(""), "downloads");
+        assert_eq!(result_order("   "), "downloads");
+        assert_eq!(result_order("essentials"), "relevance");
+    }
+
+    #[test]
+    fn category_facet_ands_with_loaders() {
+        let f = BriefFacets::for_search(Some("economy"));
+        assert!(f.contains("categories:paper"));
+        assert!(f.contains("\"categories:economy\""));
+        // Sin categoría o con slug inválido: solo loaders.
+        assert_eq!(BriefFacets::for_search(None), BriefFacets::loaders());
+        assert_eq!(BriefFacets::for_search(Some("no-existe")), BriefFacets::loaders());
+        assert_eq!(BriefFacets::for_search(Some("  ")), BriefFacets::loaders());
+    }
+
+    #[test]
+    fn details_parses_body_and_gallery() {
+        let raw: ProjectRaw = serde_json::from_str(
+            r##"{"id":"abc","title":"Demo","body":"# Hola","gallery":[
+                {"url":"https://x/1.png","title":"uno"},
+                {"url":"","title":"rota"},
+                {"url":"https://x/2.png","title":""}
+            ]}"##,
+        )
+        .unwrap();
+        assert_eq!(raw.gallery.len(), 3);
+        // El filtrado de vacías vive en details(); acá se chequea el parse.
+        assert_eq!(raw.gallery[0].title, "uno");
+    }
+
     /// Requiere red. Busca un plugin real.
     #[test]
     #[ignore = "needs-network"]
@@ -442,7 +588,7 @@ mod tests {
             .enable_all()
             .build()
             .unwrap();
-        let hits = rt.block_on(search("luckperms")).expect("Modrinth debe responder");
+        let hits = rt.block_on(search("luckperms", None)).expect("Modrinth debe responder");
         assert!(!hits.is_empty());
         assert!(hits.iter().any(|h| h.title.to_lowercase().contains("luckperms")));
     }

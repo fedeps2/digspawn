@@ -16,6 +16,59 @@ pub struct ServerMeta {
     pub server_type: String,
     pub version: String,
     pub ram_mb: u64,
+    /// Config de backups (default = todo apagado; sidecars viejos parsean igual).
+    #[serde(default)]
+    pub backup: BackupConfig,
+}
+
+/// Auto-backups + retención (vive en el sidecar).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BackupConfig {
+    pub auto_enabled: bool,
+    /// Cada cuántas horas (solo con el server corriendo).
+    pub auto_hours: u64,
+    /// Alcance de los automáticos: "full" | "world".
+    pub auto_scope: String,
+    /// Cuántos backups AUTO conservar (0 = sin límite). Los manuales nunca se borran solos.
+    pub keep_count: u32,
+    /// GB máximos en backups AUTO (0 = sin límite).
+    pub keep_gb: f64,
+    /// Backup solo al arrancar el server.
+    #[serde(default)]
+    pub on_start_enabled: bool,
+    /// Alcance del backup al arrancar: "full" | "world".
+    #[serde(default = "default_on_start_scope")]
+    pub on_start_scope: String,
+    /// Cuántos backups DE ARRANQUE conservar (0 = sin límite).
+    #[serde(default = "default_onstart_keep_count")]
+    pub onstart_keep_count: u32,
+    /// GB máximos en backups DE ARRANQUE (0 = sin límite).
+    #[serde(default)]
+    pub onstart_keep_gb: f64,
+}
+
+fn default_on_start_scope() -> String {
+    "full".to_string()
+}
+
+fn default_onstart_keep_count() -> u32 {
+    5
+}
+
+impl Default for BackupConfig {
+    fn default() -> Self {
+        Self {
+            auto_enabled: false,
+            auto_hours: 12,
+            auto_scope: "full".to_string(),
+            keep_count: 10,
+            keep_gb: 0.0,
+            on_start_enabled: false,
+            on_start_scope: default_on_start_scope(),
+            onstart_keep_count: default_onstart_keep_count(),
+            onstart_keep_gb: 0.0,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -336,6 +389,7 @@ pub async fn create_server_at(
             server_type: server_type.clone(),
             version: input.version.trim().to_string(),
             ram_mb: input.ram_mb,
+            backup: BackupConfig::default(),
         };
         std::fs::write(target.join(SIDECAR), serde_json::to_string_pretty(&meta)?)?;
         Ok(())
@@ -449,6 +503,7 @@ pub fn import_server_at(
             server_type: server_type.clone(),
             version: input.version.trim().to_string(),
             ram_mb: input.ram_mb,
+            backup: BackupConfig::default(),
         };
         std::fs::write(target.join(SIDECAR), serde_json::to_string_pretty(&meta)?)?;
         Ok(())
@@ -650,6 +705,7 @@ mod tests {
                     server_type: t.into(),
                     version: v.into(),
                     ram_mb: 2048,
+                    backup: BackupConfig::default(),
                 })
                 .unwrap(),
             )

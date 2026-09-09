@@ -282,14 +282,16 @@ a:hover {
   align-content: start;
 }
 
-/* Tiles cuadrados de server (biblioteca). */
+/* Tiles de server (biblioteca). Altura flexible con mínimo cuadrado:
+   el aspect-ratio fijo + overflow recortaba el badge en Windows (Segoe UI
+   tiene caja de línea más alta que en Linux). */
 .tile {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
   gap: 0.3rem;
-  aspect-ratio: 1 / 1;
+  min-height: 170px;
   justify-content: center;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -334,6 +336,9 @@ a:hover {
 }
 
 /* El badge nunca tapa ni desborda: corta con puntos como el nombre. */
+.tile > * {
+  flex-shrink: 0;
+}
 .tile .badge,
 .sb-head .badge {
   max-width: 100%;
@@ -342,6 +347,7 @@ a:hover {
   white-space: nowrap;
   box-sizing: border-box;
   font-size: 0.72rem;
+  line-height: 1.5;
 }
 
 .tile-icon.sb-icon {

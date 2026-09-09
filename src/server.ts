@@ -83,7 +83,7 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
       <input id="sv-icon" type="file" accept="image/png,.png" hidden />
       <div class="sv-id">
         <div class="sv-name-row">
-          <h2>${esc(info.name)}</h2>
+          <h2 id="sv-name" class="sv-name" data-tip="Click para renombrar">${esc(info.name)}</h2>
           <span id="sv-state" class="badge"></span>
         </div>
         <p id="sv-usage" class="muted"></p>
@@ -1431,6 +1431,69 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     });
   }
 
+  function openRenameModal(): void {
+    // El nombre está enlazado en listeners y comandos: tras renombrar se
+    // vuelve a la biblioteca (que relee todo) en vez de dejar estado viejo.
+    modalRoot.innerHTML = `
+      <div class="overlay">
+        <div class="modal">
+          <h3>Renombrar server</h3>
+          <p class="muted">También renombra la carpeta en disco (con backups incluidos).</p>
+          <form id="sv-rn-form" class="row" style="gap:.5rem">
+            <input id="sv-rn-input" value="${esc(name)}" maxlength="64" autocomplete="off" style="flex:1" />
+            <button type="submit">Guardar</button>
+            <button id="sv-rn-cancel" type="button">Cancelar</button>
+          </form>
+          <p id="sv-rn-err" class="error" hidden></p>
+        </div>
+      </div>`;
+    const close = () => {
+      modalRoot.innerHTML = "";
+    };
+    const input = modalRoot.querySelector<HTMLInputElement>("#sv-rn-input")!;
+    input.focus();
+    input.select();
+    modalRoot.querySelector(".overlay")?.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).classList.contains("overlay")) close();
+    });
+    modalRoot.querySelector("#sv-rn-cancel")?.addEventListener("click", close);
+    modalRoot.querySelector("#sv-rn-form")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      void doRename(input.value.trim(), close);
+    });
+  }
+
+  async function doRename(next: string, close: () => void): Promise<void> {
+    if (!next || next === name) {
+      close();
+      return;
+    }
+    const errEl = modalRoot.querySelector<HTMLElement>("#sv-rn-err")!;
+    try {
+      await api.renameServer(name, next);
+    } catch (e) {
+      errEl.textContent = errMsg(e);
+      errEl.hidden = false;
+      return;
+    }
+    close();
+    cleanupAndBack();
+  }
+
+  function cleanupAndBack(): void {
+    mounted = false;
+    unlistens.forEach((u) => {
+      try {
+        u();
+      } catch {
+        // best-effort
+      }
+    });
+    unlistens.length = 0;
+    window.clearInterval(pollTimer);
+    onBack();
+  }
+
   function closeForceModal(): void {
     modalRoot.innerHTML = "";
   }
@@ -1473,17 +1536,10 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
   });
 
   view.querySelector("#sv-back")?.addEventListener("click", () => {
-    mounted = false;
-    unlistens.forEach((u) => {
-      try {
-        u();
-      } catch {
-        // best-effort
-      }
-    });
-    unlistens.length = 0;
-    window.clearInterval(pollTimer);
-    onBack();
+    cleanupAndBack();
+  });
+  view.querySelector("#sv-name")?.addEventListener("click", () => {
+    openRenameModal();
   });
 
   // Drag & drop de .jar (solo actúa en la pestaña Plugins).

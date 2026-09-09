@@ -93,6 +93,39 @@ async fn delete_server(
 }
 
 #[tauri::command]
+async fn rename_server(
+    app: AppHandle,
+    procs: State<'_, processes::ProcessState>,
+    old_name: String,
+    new_name: String,
+) -> Result<String> {
+    if procs.is_running(old_name.trim()) {
+        return Err(ServerError::AlreadyRunning(
+            "Frená el server antes de renombrarlo.".to_string(),
+        ));
+    }
+    if app.state::<backups::BackupState>().is_busy(old_name.trim()) {
+        return Err(ServerError::Busy(
+            "Hay un backup en curso: esperá a que termine para renombrar.".to_string(),
+        ));
+    }
+    let final_name = server_manager::rename_server(&app, &old_name, &new_name)?;
+    // Los backups acompañan (best-effort).
+    if let Ok(data) = app.path().app_data_dir() {
+        let src = data.join("backups").join(old_name.trim());
+        if src.is_dir() {
+            let _ = std::fs::rename(src, data.join("backups").join(&final_name));
+        }
+    }
+    Ok(final_name)
+}
+
+#[tauri::command]
+fn server_dir_path(app: AppHandle, name: String) -> Result<String> {
+    server_manager::server_dir_path(&app, &name)
+}
+
+#[tauri::command]
 fn detect_java() -> Result<java::JavaInfo> {
     java::detect_java()
 }
@@ -396,6 +429,8 @@ pub fn run() {
             list_versions,
             create_server,
             delete_server,
+            rename_server,
+            server_dir_path,
             detect_java,
             host_ram_mb,
             required_java,

@@ -139,6 +139,52 @@ pub fn servers_dir_at(base: &std::path::Path) -> std::path::PathBuf {
     base.join("servers")
 }
 
+/// Renombra un server (carpeta). Exige frenado (lo chequea el comando).
+/// En filesystems sin case (Windows), el cambio solo de mayúsculas usa
+/// paso intermedio. Devuelve el nombre final.
+pub fn rename_server_at(dir: &std::path::Path, old: &str, new: &str) -> Result<String> {
+    let clean_old = validate_name(old)?;
+    let clean_new = validate_name(new)?;
+    if clean_old == clean_new {
+        return Ok(clean_old);
+    }
+    let src = dir.join(&clean_old);
+    if !src.is_dir() || !src.join(SIDECAR).is_file() {
+        return Err(ServerError::NotFound(format!("No existe el server \"{clean_old}\".")));
+    }
+    let dst = dir.join(&clean_new);
+    if dst.exists() {
+        return Err(ServerError::AlreadyExists(format!(
+            "Ya existe un server llamado \"{clean_new}\"."
+        )));
+    }
+    if clean_old.to_lowercase() == clean_new.to_lowercase() {
+        let tmp = dir.join(format!("{clean_old}__renaming"));
+        if tmp.exists() {
+            return Err(ServerError::Io("Reintentá en un momento.".to_string()));
+        }
+        std::fs::rename(&src, &tmp)?;
+        std::fs::rename(&tmp, &dst)?;
+    } else {
+        std::fs::rename(&src, &dst)?;
+    }
+    Ok(clean_new)
+}
+
+pub fn rename_server(app: &AppHandle, old: &str, new: &str) -> Result<String> {
+    rename_server_at(&servers_dir(app)?, old, new)
+}
+
+/// Ruta absoluta de la carpeta del server (para "abrir en carpeta").
+pub fn server_dir_path(app: &AppHandle, name: &str) -> Result<String> {
+    let clean = validate_name(name)?;
+    let dir = servers_dir(app)?.join(&clean);
+    if !dir.is_dir() || !dir.join(SIDECAR).is_file() {
+        return Err(ServerError::NotFound(format!("No existe el server \"{clean}\".")));
+    }
+    Ok(dir.to_string_lossy().into_owned())
+}
+
 pub fn list_servers_at(dir: &std::path::Path) -> Result<Vec<ServerInfo>> {
     if !dir.exists() {
         return Ok(vec![]);
@@ -177,8 +223,7 @@ pub fn list_servers(app: &AppHandle) -> Result<Vec<ServerInfo>> {
     list_servers_at(&dir)
 }
 
-pub fn delete_server(app: &AppHandle, name: &str) -> Result<()> {
-    let clean = validate_name(name)?;
+pub fn delete_server(app: &AppHandle, name: &str) -> Result<()> {    let clean = validate_name(name)?;
     let dir = servers_dir(app)?;
     let target = dir.join(&clean);
     if !target.is_dir() || target.join(SIDECAR).is_file() == false {
@@ -670,8 +715,34 @@ mod tests {
     }
 
     #[test]
-    fn rejects_bad_names() {
-        assert!(validate_name("").is_err());
+    fn rename_moves_folder() {
+        let tmp = std::env::temp_dir().join("digspawn-test-rename");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let dir = servers_dir_at(&tmp);
+        let d = dir.join("viejo");
+        std::fs::create_dir_all(d.join("world")).unwrap();
+        std::fs::write(d.join(SIDECAR), serde_json::to_string(&ServerMeta {
+            server_type: "paper".into(),
+            version: "26.2".into(),
+            ram_mb: 2048,
+            backup: BackupConfig::default(),
+        }).unwrap()).unwrap();
+        std::fs::write(d.join("world").join("level.dat"), b"LEVEL").unwrap();
+        assert_eq!(rename_server_at(&dir, "viejo", "nuevo").unwrap(), "nuevo");
+        assert!(dir.join("nuevo").join("world").join("level.dat").is_file());
+        assert!(!dir.join("viejo").exists());
+        // Mismo nombre: no-op. Inexistente / ocupado: error.
+        assert_eq!(rename_server_at(&dir, "nuevo", "nuevo").unwrap(), "nuevo");
+        assert!(rename_server_at(&dir, "fantasma", "x").is_err());
+        std::fs::create_dir_all(dir.join("otro")).unwrap();
+        std::fs::write(dir.join("otro").join(SIDECAR), "{}").unwrap();
+        assert!(rename_server_at(&dir, "nuevo", "otro").is_err());
+        assert!(rename_server_at(&dir, "nuevo", "mal/nombre").is_err());
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn rejects_bad_names() {        assert!(validate_name("").is_err());
         assert!(validate_name("   ").is_err());
         assert!(validate_name(".").is_err());
         assert!(validate_name("..").is_err());

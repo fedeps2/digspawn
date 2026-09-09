@@ -217,6 +217,9 @@ export const api = {
     invoke<VersionItem[]>("list_versions", { serverType: server_type, includeSnapshots: include_snapshots }),
   createServer: (input: CreateInput) => invoke<ServerInfo>("create_server", { input }),
   deleteServer: (name: string) => invoke<void>("delete_server", { name }),
+  renameServer: (old_name: string, new_name: string) =>
+    invoke<string>("rename_server", { oldName: old_name, newName: new_name }),
+  serverDirPath: (name: string) => invoke<string>("server_dir_path", { name }),
   detectJava: () => invoke<JavaInfo>("detect_java"),
   hostRamMb: () => invoke<number>("host_ram_mb"),
   requiredJava: (server_type: ServerType, mc_version: string) =>

@@ -235,6 +235,18 @@ a:hover {
 .muted {
   color: var(--muted);
 }
+
+/* Fila flexible genérica (forms de modales, consola...). */
+.row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.row input {
+  flex: 1;
+  min-width: 0;
+}
 .error {
   color: var(--danger);
 }
@@ -301,6 +313,49 @@ a:hover {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* El badge nunca tapa ni desborda: corta con puntos como el nombre. */
+.tile .badge,
+.sb-head .badge {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+  font-size: 0.72rem;
+}
+
+.tile-icon.sb-icon {
+  font-size: 2rem;
+  line-height: 1;
+}
+.tile-icon.sb-icon img.avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+}
+
+/* Cabecera de la sidebar: icono + (nombre clickeable + badge). */
+.sb-id {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  min-width: 0;
+}
+.sb-id-txt {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+  align-items: flex-start;
+}
+.sb-name {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.sb-name:hover {
+  color: var(--accent-strong);
 }
 
 .tile-meta {
@@ -762,6 +817,13 @@ input[type="range"] {
   margin: 0;
   font-size: 1.25rem;
   font-weight: 650;
+}
+
+.sv-name {
+  cursor: pointer;
+}
+.sv-name:hover {
+  color: var(--accent-strong);
 }
 
 .sv-id .muted {

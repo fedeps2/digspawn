@@ -3,6 +3,7 @@
 // Borrado seguro: armar (5s) + mantener presionado para confirmar.
 
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { api, errMsg, type ServerInfo, type ServerStateEvent } from "./api";
 import { placeholderHtml } from "./avatar";
 import type { ServerTab } from "./server";
@@ -137,16 +138,22 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
       : `<button data-act="start" type="button" ${busy ? "disabled" : ""}>Iniciar</button>`;
     return `
       <div class="sb-head">
-        <strong>${escapeHtml(s.name)}</strong>
-        <span class="badge">${escapeHtml(badge(s))}</span>
+        <div class="sb-id">
+          <div class="tile-icon sb-icon" data-icon="${escapeHtml(s.name)}">${placeholderHtml(s.name)}</div>
+          <div class="sb-id-txt">
+            <strong class="sb-name" data-act="rename" data-tip="Click para renombrar">${escapeHtml(s.name)}</strong>
+            <span class="badge">${escapeHtml(badge(s))}</span>
+          </div>
+        </div>
         <span class="state"><span class="dot ${dotClass(st)}"></span>${stateLabel(st)}</span>
       </div>
       ${mainBtn}
       ${st === "running" ? `<button data-act="restart" type="button" ${busy ? "disabled" : ""}>Reiniciar</button>` : ""}
-      <button data-act="config" type="button">Config del server</button>
+      <button data-act="edit" type="button" data-tip="Abrir la vista del server (consola, jugadores, ajustes…).">Editar</button>
       ${s.type === "paper" ? `<button data-act="plugins" type="button">Plugins</button>` : ""}
       <button type="button" disabled data-tip="Próximamente: para servidores híbridos con mods.">Mods</button>
       <button data-act="logs" type="button">Logs</button>
+      <button data-act="folder" type="button" data-tip="Abrir la carpeta del server en el explorador.">Abrir carpeta</button>
       ${preflightWarn ? `<div class="warn-box">${preflightWarn.map((w) => `<p>${escapeHtml(w)}</p>`).join("")}<button data-act="force-start" type="button">Arrancar igual</button></div>` : ""}
       ${sidebarMsg ? `<p class="${sidebarMsg.err ? "error" : "muted"}">${escapeHtml(sidebarMsg.text)}</p>` : ""}
       <div class="danger-zone">
@@ -188,9 +195,13 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
     view.querySelector('[data-act="force-start"]')?.addEventListener("click", () => void doStart(true));
     view.querySelector('[data-act="stop"]')?.addEventListener("click", () => void doStop());
     view.querySelector('[data-act="restart"]')?.addEventListener("click", () => void doRestart());
-    view.querySelector('[data-act="config"]')?.addEventListener("click", () => {
-      if (selected) hooks.onOpen(selected, "ajustes");
+    view.querySelector('[data-act="edit"]')?.addEventListener("click", () => {
+      if (selected) hooks.onOpen(selected, "consola");
     });
+    view.querySelector('[data-act="rename"]')?.addEventListener("click", () => {
+      if (selected) openRenameModal();
+    });
+    view.querySelector('[data-act="folder"]')?.addEventListener("click", () => void doFolder());
     view.querySelector('[data-act="plugins"]')?.addEventListener("click", () => {
       if (selected) hooks.onOpen(selected, "plugins");
     });
@@ -265,8 +276,9 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
         }
         if (isStale()) return;
         if (!url) return;
-        const icon = view.querySelector(`[data-icon="${CSS.escape(s.name)}"]`);
-        if (icon) icon.innerHTML = `<img class="avatar" src="${url}" alt="" />`;
+        view.querySelectorAll(`[data-icon="${CSS.escape(s.name)}"]`).forEach((icon) => {
+          icon.innerHTML = `<img class="avatar" src="${url}" alt="" />`;
+        });
       }),
     );
   }
@@ -356,6 +368,74 @@ export async function renderLibrary(view: HTMLElement, hooks: LibraryHooks): Pro
     }
     if (isStale()) return;
     render();
+  }
+
+  async function doFolder(): Promise<void> {
+    if (!selected || isStale()) return;
+    try {
+      await openPath(await api.serverDirPath(selected));
+    } catch (e) {
+      if (isStale()) return;
+      sidebarMsg = { text: errMsg(e), err: true };
+      render();
+    }
+  }
+
+  function openRenameModal(): void {
+    const current = selected;
+    if (!current) return;
+    // En body (no en view): sobrevive a los re-renders de la biblioteca.
+    const overlay = document.createElement("div");
+    overlay.className = "overlay";
+    overlay.innerHTML = `
+      <div class="modal">
+        <h3>Renombrar server</h3>
+        <p class="muted">También renombra la carpeta en disco (con backups incluidos).</p>
+        <form id="rn-form" class="row" style="gap:.5rem">
+          <input id="rn-input" value="${escapeHtml(current)}" maxlength="64" autocomplete="off" style="flex:1" />
+          <button type="submit">Guardar</button>
+          <button id="rn-cancel" type="button">Cancelar</button>
+        </form>
+        <p id="rn-err" class="error" hidden></p>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    const input = overlay.querySelector<HTMLInputElement>("#rn-input")!;
+    input.focus();
+    input.select();
+    overlay.addEventListener("click", (e) => {
+      if ((e.target as HTMLElement).classList.contains("overlay")) close();
+    });
+    overlay.querySelector("#rn-cancel")?.addEventListener("click", close);
+    overlay.querySelector("#rn-form")?.addEventListener("submit", (e) => {
+      e.preventDefault();
+      void doRename(current, input.value.trim(), close, overlay);
+    });
+  }
+
+  async function doRename(current: string, next: string, close: () => void, overlay: HTMLElement): Promise<void> {
+    if (!next || next === current) {
+      close();
+      return;
+    }
+    const errEl = overlay.querySelector<HTMLElement>("#rn-err")!;
+    try {
+      const finalName = await api.renameServer(current, next);
+      const cached = iconCache.get(current);
+      iconCache.delete(current);
+      if (cached !== undefined) iconCache.set(finalName, cached);
+      selected = finalName;
+      disarm();
+      sidebarMsg = null;
+      preflightWarn = null;
+      servers = await api.listServers();
+      close();
+      if (isStale()) return;
+      render();
+    } catch (e) {
+      errEl.textContent = errMsg(e);
+      errEl.hidden = false;
+    }
   }
 
   // Estados en vivo: actualiza sin perder la selección.

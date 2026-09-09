@@ -1,7 +1,7 @@
 {
-  "latest_public": "0.0.1",
-  "url": "https://github.com/fedeps2/digspawn/releases/download/v0.0.1/digspawn-x86_64-windows.exe",
+  "latest_public": "0.0.2",
+  "url": "https://github.com/fedeps2/digspawn/releases/download/v0.0.2/digspawn-x86_64-windows.exe",
   "sha256": "",
-  "notes": "Release de prueba del circuito (CI + exe portable).",
+  "notes": "Prueba del auto-update + fix del badge recortado en Windows.",
   "required": false
 }

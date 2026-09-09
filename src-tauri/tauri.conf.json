@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Digspawn",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "identifier": "com.digspawn.app",
   "build": {
     "beforeDevCommand": "npm run dev",

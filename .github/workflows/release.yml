@@ -12,6 +12,9 @@ on:
   push:
     tags:
       - "v*"
+  # Disparo manual (pestaña Actions → Release Windows → Run workflow).
+  # Útil si el push del tag no disparó el run o para re-correrlo.
+  workflow_dispatch:
 
 permissions:
   contents: write

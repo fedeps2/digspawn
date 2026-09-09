@@ -344,6 +344,10 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
         ${field("IP del server", "Para selfhost sin complicaciones, usá ZeroTier o Radmin VPN y pegá acá la IP que ellos te dan. Vacío = escucha en todas las interfaces.", `<input id="pp-ip" type="text" placeholder="(vacío = todas)" value="${esc(p["server-ip"] ?? "")}" ${dis ? "disabled" : ""} />`)}
         ${(localIps ?? []).length > 0 ? `<p class="muted">Pasales a tus amigos así — IP:Puerto (con Radmin/ZeroTier, la IP es la que te da la VPN): ${(localIps ?? []).map((ip) => esc(`${ip}:${p["server-port"] ?? "25565"}`)).join(" · ")}</p>` : ""}
         ${sel("pp-online", "Online mode", "En true solo entran cuentas premium (originales). En false entra cualquiera, pero se puede usar cualquier nombre.", p["online-mode"] ?? "true", BOOLS, dis)}
+        <div id="pp-offlinewarn" class="warn-box" style="${(p["online-mode"] ?? "true") === "false" ? "" : "display:none"}">
+          <p>⚠ Cuidado: con online-mode en <strong>false</strong>, cualquiera puede entrar con <strong>cualquier nombre</strong> — incluso el tuyo o el de tus amigos — y hacer estragos.</p>
+          <p>Para jugar tranqui: instalá un plugin de login (/register y /login en el chat) desde la pestaña Plugins, activá la whitelist para frenar multicuentas, y usá algo como SkinRestorer para que todos vean sus skins.</p>
+        </div>
         ${sel("pp-diff", "Dificultad", "Daño de monstruos, hambre y veneno: peaceful, easy, normal o hard.", p["difficulty"] ?? "normal", DIFFICULTIES, dis)}
         ${sel("pp-mode", "Gamemode", "Modo de juego al entrar: survival, creative, adventure o spectator.", p["gamemode"] ?? "survival", GAMEMODES, dis)}
         ${sel("pp-pvp", "PVP", "Si los jugadores pueden hacerse daño entre ellos.", p["pvp"] ?? "true", BOOLS, dis)}
@@ -392,6 +396,12 @@ export async function openServer(view: HTMLElement, name: string, onBack: () => 
     ramInput?.addEventListener("input", () => {
       const lbl = tabBody.querySelector("#pp-ram-lbl");
       if (lbl && ramInput) lbl.textContent = `${ramInput.value} MB`;
+    });
+    // Aviso en vivo: si ponen online-mode en false, mostrar el riesgo.
+    const onlineSel = tabBody.querySelector<HTMLSelectElement>("#pp-online");
+    const offlineWarn = tabBody.querySelector<HTMLElement>("#pp-offlinewarn");
+    onlineSel?.addEventListener("change", () => {
+      if (offlineWarn && onlineSel) offlineWarn.style.display = onlineSel.value === "false" ? "" : "none";
     });
     tabBody.querySelector("#pp-save")?.addEventListener("click", () => void saveProps());
   }

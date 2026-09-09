@@ -1139,6 +1139,8 @@ details.adv h4 {
   visibility: hidden;
   transition: opacity 0.15s ease;
   pointer-events: none;
+  /* Por encima del contenido vecino (dropdowns, cards...), debajo de modales. */
+  z-index: 50;
 }
 [data-tip]:hover::after {
   opacity: 1;

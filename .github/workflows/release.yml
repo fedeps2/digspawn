@@ -1,0 +1,67 @@
+# Release de Digspawn (Windows x86_64, portable, sin instalador).
+#
+# Disparo: pushear un tag `v*` (ej: `git tag v0.1.0 && git push origin v0.1.0`).
+# El workflow buildea el exe, lo renombra a la convención del auto-update A+,
+# le calcula el SHA256 y sube ambos al Release (draft, para revisar antes).
+# Los bundles MSI/NSIS se generan pero NO se publican: V1 es portable.
+# Después: completar el paso 6 de RELEASE.md (version.json con url + hash).
+
+name: Release Windows
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust (MSVC x64)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Build Tauri (crea el draft Release)
+        uses: tauri-apps/tauri-action@v0
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Digspawn ${{ github.ref_name }}"
+          releaseBody: "Portable Windows x64. Ver version.json para el auto-update."
+          releaseDraft: true
+          prerelease: false
+          args: --target x86_64-pc-windows-msvc
+
+      - name: Preparar portable (rename + SHA256)
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/x86_64-pc-windows-msvc/release/digspawn.exe"
+          if (!(Test-Path $exe)) { throw "No se encontró $exe" }
+          Copy-Item $exe "digspawn-x86_64-windows.exe"
+          (Get-FileHash "digspawn-x86_64-windows.exe" -Algorithm SHA256).Hash.ToLower() | Out-File -NoNewline -Encoding ascii "digspawn-x86_64-windows.exe.sha256"
+          Get-Content "digspawn-x86_64-windows.exe.sha256"
+
+      - name: Subir portable al Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release upload "${{ github.ref_name }}"
+          digspawn-x86_64-windows.exe
+          digspawn-x86_64-windows.exe.sha256
+          --clobber

@@ -10,13 +10,16 @@ descarga manual).
    - `src-tauri/Cargo.toml` → `version`
    - `src-tauri/tauri.conf.json` → `version`
    - `package.json` → `version`
-2. **Buildear el exe Windows** (`x86_64-pc-windows-msvc`, juego posterior
-   según AGENTS.md; en esta máquina solo se compila/prueba en Arch).
-3. **Nombrar el asset** exactamente así (el updater no adivina nombres):
-   `digspawn-x86_64-windows.exe`
-4. **Generar el hash**: `sha256sum digspawn-x86_64-windows.exe` → guardar el hex.
-5. **Crear el Release en GitHub** (tag `v0.2.0`) con el exe adjunto.
-6. **Actualizar `version.json` en `main`** (flat, solo Windows por ahora):
+   - `version.json` → todavía NO (se toca en el paso 5).
+2. **Probar en el dual-boot** (checklist en el chat del release: exe abre,
+   wizard Paper+Vanilla, start/stop/restart, tray, swap A+ simulado).
+3. **Tag + push**: `git tag v0.2.0 && git push origin v0.2.0`.
+   El workflow `.github/workflows/release.yml` buildea en `windows-latest`,
+   renombra a `digspawn-x86_64-windows.exe`, calcula el `.sha256` y sube
+   ambos al Release (draft). Revisar el draft y **publicarlo**.
+4. **Copiar el hash** del asset `digspawn-x86_64-windows.exe.sha256` del
+   Release publicado.
+5. **Actualizar `version.json` en `main`** (flat, solo Windows por ahora):
    ```json
    {
      "latest_public": "0.2.0",

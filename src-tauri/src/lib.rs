@@ -349,6 +349,11 @@ async fn install_plugin(
 }
 
 #[tauri::command]
+fn app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
 async fn check_update() -> update::UpdateCheck {
     update::check_update().await
 }
@@ -454,6 +459,7 @@ pub fn run() {
             set_icon,
             get_icon,
             local_ips,
+            app_version,
             check_update,
             download_update,
             apply_update,

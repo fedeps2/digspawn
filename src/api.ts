@@ -262,6 +262,7 @@ export const api = {
   setIcon: (name: string, data_url: string) => invoke<void>("set_icon", { name, dataUrl: data_url }),
   getIcon: (name: string) => invoke<string | null>("get_icon", { name }),
   localIps: () => invoke<string[]>("local_ips"),
+  appVersion: () => invoke<string>("app_version"),
   checkUpdate: () => invoke<UpdateCheck>("check_update"),
   downloadUpdate: () => invoke<DownloadReport>("download_update"),
   applyUpdate: () => invoke<void>("apply_update"),

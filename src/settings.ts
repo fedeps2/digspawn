@@ -17,6 +17,7 @@ function esc(s: string): string {
 export async function openSettings(view: HTMLElement, onBack: () => void): Promise<void> {
   let check = true;
   let ram = 2048;
+  let version = "";
   let error: string | null = null;
   try {
     const s = await api.getSettings();
@@ -25,10 +26,16 @@ export async function openSettings(view: HTMLElement, onBack: () => void): Promi
   } catch (e) {
     error = errMsg(e);
   }
+  try {
+    version = await api.appVersion();
+  } catch {
+    version = "";
+  }
 
   view.innerHTML = `
     <button id="st-back" type="button">← Biblioteca</button>
     <h2>General</h2>
+    ${version ? `<p class="muted">Digspawn v${esc(version)}</p>` : ""}
     ${error ? `<p class="error">${esc(error)}</p>` : ""}
     <div class="props-grid">
       <label class="check" data-tip="Al abrir, Digspawn se fija si hay versión nueva en GitHub."><input id="st-updates" type="checkbox" ${check ? "checked" : ""} /> Buscar updates al abrir</label>

@@ -1326,6 +1326,11 @@ details.adv h4 {
   font-size: 0.85rem;
 }
 
+/* Aviso de memoria bajo el header: separado del avatar. */
+#sv-memwarn {
+  margin: 0.75rem 0 0.25rem;
+}
+
 /* Diagnóstico de crash: causa probable + sugerencia. */
 .crash-box {
   border: 1px solid rgba(240, 97, 110, 0.45);

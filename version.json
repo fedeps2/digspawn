@@ -1,6 +1,7 @@
 {
-  "latest_public": "0.1.0",
-  "url": "https://github.com/fedeps2/digspawn/releases/latest",
-  "notes": "Versión inicial de Digspawn.",
+  "latest_public": "0.0.1",
+  "url": "https://github.com/fedeps2/digspawn/releases/download/v0.0.1/digspawn-x86_64-windows.exe",
+  "sha256": "",
+  "notes": "Release de prueba del circuito (CI + exe portable).",
   "required": false
 }

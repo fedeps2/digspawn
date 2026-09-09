@@ -272,23 +272,6 @@ fn local_ips() -> Vec<String> {
     server_manager::local_ips()
 }
 
-/// TEMPORAL (diagnóstico del salto a biblioteca): appendea a /tmp/digspawn-debug.log.
-/// Se saca cuando se encuentre la causa.
-#[tauri::command]
-fn debug_log(msg: String) -> Result<()> {
-    use std::io::Write;
-    let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("/tmp/digspawn-debug.log")?;
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    writeln!(f, "[{ts}] {msg}")?;
-    Ok(())
-}
-
 #[tauri::command]
 fn list_plugins(app: AppHandle, name: String) -> Result<Vec<plugins::PluginInfo>> {
     plugins::list_plugins(&app, &name)
@@ -477,7 +460,6 @@ pub fn run() {
             rollback_available,
             rollback_update,
             import_server,
-            debug_log,
             list_backups,
             create_backup,
             restore_backup,

@@ -17,6 +17,26 @@
 - Scaffold: vanilla TS, productName `Digspawn`, identifier `com.digspawn.app`,
   binario `digspawn`.
 
+## Arquitectura: el backend no se contamina con la UI (REGLA DURA)
+- **La lógica de negocio NO vive en la interfaz.** El frontend solo muestra y
+  delega: pedir datos al backend, pintar, devolver la acción del usuario. Nada de
+  decisiones de dominio (qué Java hace falta, qué versiones son válidas, cómo se
+  arma un comando de arranque) resueltas en TypeScript. Eso vive en Rust.
+- **Todo el acoplamiento a Tauri en el frontend pasa por `src/api.ts`.** Ningún
+  otro archivo importa de `@tauri-apps/*`: nada de `invoke`, `listen`, `open`,
+  `openPath`, `openUrl`, `getCurrentWebview` sueltos por las vistas. Se envuelven
+  acá (`api.onLogLine(cb)`, `api.elegirArchivo()`, `api.abrirEnNavegador(url)`) y
+  las vistas consumen la API tipada.
+- **Por qué:** si la UI queda desacoplada del runtime, cambiar de stack de interfaz
+  (ej. Tauri → Slint) es reescribir `api.ts` + el markup, y los módulos de lógica
+  (`java.rs`, `modrinth.rs`, `paper_api.rs`, `mojang_api.rs`, `properties.rs`,
+  `errors.rs` — hoy con CERO dependencia de Tauri) se reutilizan intactos. Si la
+  lógica se hardcodea en la vista, la migración pasa de horas a reescritura
+  completa. **La regla no cuesta nada hoy y es lo que mantiene esa puerta abierta.**
+- Estado actual a respetar: los 51 `invoke` ya están todos en `api.ts`. Los
+  imports de plugins aún se reparten en las vistas (deuda a saldar cuando se toque
+  cada archivo, sin apuro y sin romper nada).
+
 ## Reglas de trabajo
 1. Leer SPEC.md completo antes de tocar código.
 2. Arrancar por el esqueleto: `npm create tauri-app` → app mínima que corre,

@@ -23,7 +23,9 @@
   --shadow-2: 0 8px 24px rgba(0, 0, 0, 0.35);
   --shadow-3: 0 16px 48px rgba(0, 0, 0, 0.5);
 
-  font-family: Inter, system-ui, "Segoe UI", Avenir, Helvetica, Arial, sans-serif;
+  /* Sin webfonts ni stack "de producto web": la fuente la decide el SO. */
+  font-family: system-ui, "Segoe UI Variable Text", "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
@@ -34,8 +36,10 @@
   color-scheme: dark;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  /* "antialiased" adelgaza el texto y en Windows lo delata como web; el SO
+     renderiza como el resto de las apps. */
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -43,6 +47,7 @@ body {
   margin: 0;
   min-height: 100vh;
   overflow-x: clip;
+  overscroll-behavior: none;
   background: var(--bg);
   background-image: radial-gradient(
       1200px 600px at 20% -10%,
@@ -60,16 +65,56 @@ body {
   scrollbar-color: var(--border-strong) transparent;
 }
 *::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
 }
 *::-webkit-scrollbar-thumb {
+  /* Fina y pegada al borde, como la overlay de Windows 11: sin el borde
+     grueso que la convertia en una "pill flotante" estilo app web. */
   background: var(--border-strong);
+  background-clip: padding-box;
+  border: 3px solid transparent;
   border-radius: 999px;
-  border: 2px solid var(--bg);
 }
-*::-webkit-scrollbar-track {
+*::-webkit-scrollbar-thumb:hover {
+  background: #445269;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* ---------- Contrato "es una app, no una web" ----------
+   El texto NO se selecciona por accidente (labels, titulos, chrome de la UI).
+   Solo se selecciona donde copiar tiene sentido: campos, consola/logs y lo
+   marcado .selectable. Lo que el CSS no puede frenar (menu contextual del
+   navegador, zoom con Ctrl+rueda, arrastrar imagenes) lo apaga src/desktop.ts. */
+body {
+  user-select: none;
+  -webkit-user-select: none;
+  overscroll-behavior: none;
+}
+input,
+textarea,
+[contenteditable],
+.selectable,
+.console,
+#sv-log,
+pre,
+code {
+  user-select: text;
+  -webkit-user-select: text;
+}
+img {
+  -webkit-user-drag: none;
+}
+::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+a[href] {
+  cursor: pointer;
 }
 
 /* ---------- Topbar ---------- */
@@ -199,7 +244,7 @@ button:focus-visible {
 }
 
 button {
-  cursor: pointer;
+  cursor: default;
 }
 button:active:not(:disabled) {
   transform: translateY(1px);
@@ -218,7 +263,7 @@ select:disabled {
 select {
   appearance: none;
   -webkit-appearance: none;
-  cursor: pointer;
+  cursor: default;
   box-sizing: border-box;
   padding-right: 2.2em;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b97a8' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -297,7 +342,7 @@ a:hover {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 0.8rem 0.6rem;
-  cursor: pointer;
+  cursor: default;
   transition: border-color 0.16s ease, background-color 0.16s ease,
     transform 0.16s ease;
   overflow: hidden;
@@ -375,7 +420,7 @@ a:hover {
   align-items: flex-start;
 }
 .sb-name {
-  cursor: pointer;
+  cursor: default;
   overflow-wrap: anywhere;
 }
 .sb-name:hover {
@@ -556,7 +601,7 @@ a:hover {
 
 /* Descripción truncada a 2 líneas (el detalle completo va en el modal). */
 .card.plug {
-  cursor: pointer;
+  cursor: default;
 }
 .card.plug .plug-desc {
   display: -webkit-box;
@@ -618,7 +663,7 @@ a:hover {
 
 /* ---------- Icono del server (el avatar del header es el botón) ---------- */
 #sv-avatar.clickable {
-  cursor: pointer;
+  cursor: default;
   border-radius: 50%;
 }
 #sv-avatar.clickable:hover .avatar,
@@ -844,7 +889,7 @@ input[type="range"] {
 }
 
 .sv-name {
-  cursor: pointer;
+  cursor: default;
 }
 .sv-name:hover {
   color: var(--accent-strong);
@@ -1010,7 +1055,7 @@ details.adv {
   margin-top: 0.25rem;
 }
 details.adv > summary {
-  cursor: pointer;
+  cursor: default;
   font-weight: 650;
   font-size: 0.95rem;
   list-style-position: inside;

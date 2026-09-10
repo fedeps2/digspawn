@@ -9,6 +9,7 @@ import { openWizard } from "./wizard";
 import { openServer, type ServerTab } from "./server";
 import { openImport } from "./import";
 import { openSettings } from "./settings";
+import { installDesktopBehaviors } from "./desktop";
 
 const view = document.querySelector<HTMLElement>("#view");
 const wizardRoot = document.querySelector<HTMLElement>("#wizard-root");
@@ -19,6 +20,10 @@ const topUsage = document.querySelector<HTMLElement>("#top-usage");
 if (!view || !wizardRoot || !settingsBtn || !banner) {
   throw new Error("Falta el shell base (index.html).");
 }
+
+// La UI se comporta como app de escritorio, no como página: sin menú
+// contextual del navegador, sin zoom con Ctrl+rueda, sin selección accidental.
+installDesktopBehaviors();
 
 async function showLibrary(): Promise<void> {
   const v = view as HTMLElement;
